@@ -4,11 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "es_cli"
-path = "src/bin/cli.rs"
+name = "list_indicies"
+path = "src/bin/list_indicies.rs"
+
+[[bin]]
+name = "get_documents"
+path = "src/bin/get_documents.rs"
 
 [dependencies]
 iced = { version = "0.13.1", features = ["svg"] }
-reqwest = { version = "0.12.26", features = ["rustls-tls"] }
+reqwest = { version = "0.12.26", features = ["rustls-tls", "json"] }
 tokio = { version = "1.48.0" }
 serde_json = "1.0.145"

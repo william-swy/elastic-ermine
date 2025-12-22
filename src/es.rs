@@ -62,6 +62,10 @@ pub struct ElasticSearchIndex {
     pub dataset_size: Option<String>,
 }
 
+pub enum ElasticSearchMethodType {
+    POST,
+}
+
 impl ElasticsearchClient {
     pub fn new(root_url: String) -> Result<Self, Box<dyn std::error::Error>> {
         let config = ClientConfig {
@@ -149,6 +153,27 @@ impl ElasticsearchClient {
         .collect::<Result<Vec<_>, _>>()?;
 
         return Ok(res);
+    }
+
+    pub async fn operation(&self, method_type: ElasticSearchMethodType, path: &str, body: Option<&serde_json:: Value>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        let base_url = reqwest::Url::parse(&self.config.root_url)?;
+        let url = base_url.join(path)?;
+
+        let mut builder = match method_type {
+            ElasticSearchMethodType::POST => self.client.post(url),
+        };
+
+        builder = self.request_add_auth(builder);
+
+        if let Some(request_body) = body {
+            builder = builder.json(request_body);
+        }
+
+        let res = builder.send().await?.text().await?;
+
+        let json = serde_json::from_str(&res)?;
+
+        return Ok(json);
     }
 
     fn parse_indicices_response(val: &serde_json::Value) -> Result<ElasticSearchIndex, Box<dyn std::error::Error>> {
