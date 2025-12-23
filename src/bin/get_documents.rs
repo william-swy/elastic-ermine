@@ -8,6 +8,9 @@ fn main() {
     let mut auth_arg: Option<String> = None;
     let mut cacert_arg: Option<String> = None;
 
+    let mut aws_profile: Option<String> = None;
+    let mut aws_region: Option<String> = None;
+
     let mut idx = 1;
 
     while idx < args.len() {
@@ -23,6 +26,12 @@ fn main() {
             
         } else if args[idx] == "--cacert" {
             cacert_arg = Some(args[idx+1].clone());
+            idx += 2;
+        } else if args[idx] == "--aws-profile" {
+            aws_profile = Some(args[idx+1].to_owned());
+            idx += 2;
+        } else if args[idx] == "--aws-region" {
+            aws_region = Some(args[idx+1].to_owned());
             idx += 2;
         } else {
             println!("Unknown argument {}", args[idx]);
@@ -40,7 +49,7 @@ fn main() {
         std::process::exit(1);
     });
 
-    if let Some(auth) = auth_arg {
+    if let Some(auth) = &auth_arg {
         let auth_parsed: Vec<&str> = auth.split(":").collect();
         let username = auth_parsed[0];
         let password = auth_parsed.get(1);
@@ -51,6 +60,19 @@ fn main() {
         });
 
         client.use_auth(basic_auth);
+    }
+
+    if let Some(region) = &aws_region {
+        if auth_arg.is_some() {
+            println!("Cannot use standard auth and aws sigv4");
+            std::process::exit(1);
+        }
+
+        let aws_auth = es::Auth::AWS(es::AwsSigv4{
+            region: region.to_owned(),
+            profile: aws_profile,
+        });
+        client.use_auth(aws_auth);
     }
 
     if let Some(cacert_file) = cacert_arg {
