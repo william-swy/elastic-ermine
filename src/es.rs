@@ -2,11 +2,17 @@ use aws_credential_types::provider::ProvideCredentials;
 
 pub enum Auth {
     BASIC(BasicAuth),
+    AWS(AwsSigv4)
 }
 
 pub struct BasicAuth {
     pub username: String,
     pub password: Option<String>
+}
+
+pub struct AwsSigv4 {
+    pub region: String,
+    pub profile: Option<String>,
 }
 
 pub struct ElasticsearchClient {
@@ -118,25 +124,26 @@ impl ElasticsearchClient {
         let url = reqwest::Url::parse(&self.config.root_url)?;
         let builder = self.client.get(url);
 
-        let builder = self.request_add_auth(builder);
-
-        let mut request = builder.build()?;
-        ElasticsearchClient::sign_request_sigv4(&mut request).await?;
+        let request = self.request_add_auth(builder).await?;
 
         self.client.execute(request).await?.error_for_status()?;
 
         return Ok(());
     }
 
-    fn request_add_auth(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    async fn request_add_auth(&self, request_builder: reqwest::RequestBuilder) -> Result<reqwest::Request, Box<dyn std::error::Error>> {
         if let Some(auth) = &self.config.auth {
-            match auth {
-                Auth::BASIC(basic_auth) => {
-                    return request.basic_auth(&basic_auth.username, basic_auth.password.clone());
+            return match auth {
+                Auth::BASIC(basic_auth) =>
+                    Ok(request_builder.basic_auth(&basic_auth.username, basic_auth.password.clone()).build()?),
+                Auth::AWS(aws_sigv4) => {
+                    let mut request = request_builder.build()?;
+                    ElasticsearchClient::sign_request_sigv4(&mut request, aws_sigv4).await?;
+                    return Ok(request);
                 },
             }
         }
-        return request;
+        return Ok(request_builder.build()?);
     }
 
     pub async fn get_indicies(&self) -> Result<Vec<ElasticSearchIndex>, Box<dyn std::error::Error>> {
@@ -145,10 +152,7 @@ impl ElasticsearchClient {
 
         let builder = self.client.get(url);
 
-        let builder = self.request_add_auth(builder);
-
-        let mut request = builder.build()?;
-        ElasticsearchClient::sign_request_sigv4(&mut request).await?;
+        let request = self.request_add_auth(builder).await?;
 
         let res = self.client.execute(request).await?.text().await?;
 
@@ -171,14 +175,11 @@ impl ElasticsearchClient {
             ElasticSearchMethodType::POST => self.client.post(url),
         };
 
-        builder = self.request_add_auth(builder);
-
         if let Some(request_body) = body {
             builder = builder.json(request_body);
         }
 
-        let mut request = builder.build()?;
-        ElasticsearchClient::sign_request_sigv4(&mut request).await?;
+        let request = self.request_add_auth(builder).await?;
 
         let res = self.client.execute(request).await?.text().await?;
 
@@ -258,11 +259,12 @@ impl ElasticsearchClient {
         );
     }
 
-    async fn sign_request_sigv4(request: &mut reqwest::Request) -> Result<(), Box<dyn std::error::Error>> {
-        let credentials_provider = aws_config::default_provider::credentials::DefaultCredentialsChain::builder()
-            .profile_name("default")
-            .build()
-            .await;
+    async fn sign_request_sigv4(request: &mut reqwest::Request, config: &AwsSigv4) -> Result<(), Box<dyn std::error::Error>> {
+        let mut credentials_provider = aws_config::default_provider::credentials::DefaultCredentialsChain::builder();
+        if let Some(profile) = &config.profile {
+            credentials_provider = credentials_provider.profile_name(profile);
+        }
+        let credentials_provider = credentials_provider.build().await;
 
         let identity = credentials_provider
             .provide_credentials()
@@ -273,12 +275,10 @@ impl ElasticsearchClient {
         settings.payload_checksum_kind = aws_sigv4::http_request::PayloadChecksumKind::XAmzSha256;
         settings.signature_location = aws_sigv4::http_request::SignatureLocation::Headers;
 
-        let region = "us-west-2";
-
         let params = aws_sigv4::http_request::SigningParams::V4(
             aws_sigv4::sign::v4::SigningParams::builder()
                 .identity(&identity)
-                .region(region)
+                .region(&config.region)
                 .name("es")
                 .time(std::time::SystemTime::now())
                 .settings(settings)
