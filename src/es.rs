@@ -1,3 +1,5 @@
+use aws_credential_types::provider::ProvideCredentials;
+
 pub enum Auth {
     BASIC(BasicAuth),
 }
@@ -118,7 +120,10 @@ impl ElasticsearchClient {
 
         let builder = self.request_add_auth(builder);
 
-        builder.send().await?.error_for_status()?;
+        let mut request = builder.build()?;
+        ElasticsearchClient::sign_request_sigv4(&mut request).await?;
+
+        self.client.execute(request).await?.error_for_status()?;
 
         return Ok(());
     }
@@ -142,7 +147,10 @@ impl ElasticsearchClient {
 
         let builder = self.request_add_auth(builder);
 
-        let res = builder.send().await?.text().await?;
+        let mut request = builder.build()?;
+        ElasticsearchClient::sign_request_sigv4(&mut request).await?;
+
+        let res = self.client.execute(request).await?.text().await?;
 
         let json: serde_json::Value = serde_json::from_str(&res)?;
 
@@ -169,7 +177,10 @@ impl ElasticsearchClient {
             builder = builder.json(request_body);
         }
 
-        let res = builder.send().await?.text().await?;
+        let mut request = builder.build()?;
+        ElasticsearchClient::sign_request_sigv4(&mut request).await?;
+
+        let res = self.client.execute(request).await?.text().await?;
 
         let json = serde_json::from_str(&res)?;
 
@@ -245,5 +256,70 @@ impl ElasticsearchClient {
                 dataset_size
             }
         );
+    }
+
+    async fn sign_request_sigv4(request: &mut reqwest::Request) -> Result<(), Box<dyn std::error::Error>> {
+        let credentials_provider = aws_config::default_provider::credentials::DefaultCredentialsChain::builder()
+            .profile_name("default")
+            .build()
+            .await;
+
+        let identity = credentials_provider
+            .provide_credentials()
+            .await?
+            .into();
+
+        let mut settings = aws_sigv4::http_request::SigningSettings::default();
+        settings.payload_checksum_kind = aws_sigv4::http_request::PayloadChecksumKind::XAmzSha256;
+        settings.signature_location = aws_sigv4::http_request::SignatureLocation::Headers;
+
+        let region = "us-west-2";
+
+        let params = aws_sigv4::http_request::SigningParams::V4(
+            aws_sigv4::sign::v4::SigningParams::builder()
+                .identity(&identity)
+                .region(region)
+                .name("es")
+                .time(std::time::SystemTime::now())
+                .settings(settings)
+                .build()?
+        );
+
+        let headers = request.headers()
+            .iter()
+            .map(|(key, value)| Ok::<(_, _), reqwest::header::ToStrError>((key.as_str(), value.to_str()?)))
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        let body = request.body()
+            .map(|b| b.as_bytes())
+            .flatten()
+            .map(|b| aws_sigv4::http_request::SignableBody::Bytes(b))
+            .unwrap_or(aws_sigv4::http_request::SignableBody::Bytes(&[]));
+
+        let signable = aws_sigv4::http_request::SignableRequest::new(
+            request.method().as_str(),
+            request.url().as_str(),
+            headers.into_iter(),
+            body,
+        )?;
+
+        let (signing_instructions, _) = aws_sigv4::http_request::sign(signable, &params)?
+            .into_parts();
+
+        let (signed_headers, signed_query_params) = signing_instructions.into_parts();
+
+        for header in signed_headers.into_iter() {
+            let key = header.name();
+            let mut value = http::HeaderValue::from_str(header.value())?;
+            value.set_sensitive(header.sensitive());
+
+            request.headers_mut().try_insert(key, value)?;
+        } 
+
+        if !signed_query_params.is_empty() {
+            Err(ElasticSearchError::new("sigv4 signed results not all in request header format".to_owned()))?;
+        }
+
+        return Ok(())
     }
 }
