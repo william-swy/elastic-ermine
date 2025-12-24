@@ -21,6 +21,9 @@ enum Message {
     BasicAuthUsernameChanged(String),
     BasicAuthPasswordChanged(String),
 
+    AWSAuthRegionChanged(String),
+    AWSAuthProfileChanged(String),
+
     TestConnectionButtonPressed,
     TestConnectionButtonResultReturned(Result<(), MyAppError>),
 }
@@ -153,6 +156,18 @@ impl MyApp {
                 self.test_connection_button_state = TestConnectionButtonState::Result(res);
                 return iced::Task::none();
             },
+            Message::AWSAuthRegionChanged(new_region) => {
+                self.auth_choice_aws.region = new_region;
+                return iced::Task::none();
+            },
+            Message::AWSAuthProfileChanged(profile) => {
+                if profile.is_empty() {
+                    self.auth_choice_aws.profile = None;
+                } else {
+                    self.auth_choice_aws.profile = Some(profile);
+                }
+                return iced::Task::none();
+            },
         }
     }
 
@@ -230,7 +245,11 @@ impl MyApp {
                         ]),
                         AuthChoice::AWSSigV4 => Some(column![
                             iced::widget::text("AWS Region"),
-                            iced::widget::text("AWS Profile")
+                            iced::widget::text_input("us-east-1", &self.auth_choice_aws.region)
+                                .on_input(Message::AWSAuthRegionChanged),
+                            iced::widget::text("AWS Profile"),
+                            iced::widget::text_input("default", self.auth_choice_aws.profile.as_ref().map(|s| s.as_str()).unwrap_or(""))
+                                .on_input(Message::AWSAuthProfileChanged)
                         ]),
                         AuthChoice::None => None,
                     }
