@@ -2,7 +2,7 @@ pub mod es;
 
 pub mod cli {
     use crate::es;
-    
+
     pub fn create_client() -> es::ElasticsearchClient {
         let args: Vec<String> = std::env::args().collect();
 
