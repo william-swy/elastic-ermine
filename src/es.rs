@@ -1,25 +1,30 @@
 use aws_credential_types::provider::ProvideCredentials;
 
+#[derive(Debug)]
 pub enum Auth {
     BASIC(BasicAuth),
     AWS(AwsSigv4)
 }
 
+#[derive(Debug)]
 pub struct BasicAuth {
     pub username: String,
     pub password: Option<String>
 }
 
+#[derive(Debug)]
 pub struct AwsSigv4 {
     pub region: String,
     pub profile: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct ElasticsearchClient {
     config: ClientConfig,
     client: reqwest::Client,
 }
 
+#[derive(Debug)]
 struct ClientConfig {
     root_url: String,
     auth: Option<Auth>,
@@ -109,6 +114,25 @@ impl ElasticsearchClient {
         self.client = self.config.build_reqwest_client()?;
 
         return Ok(());
+    }
+
+    pub fn use_custom_pem_certificate_from_buf(&mut self, buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+        let cert = reqwest::Certificate::from_pem(buffer)?;
+
+        return self.use_custom_certificate(cert);
+    }
+
+    pub fn use_custom_der_certificate_from_buf(&mut self, buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+        let cert = reqwest::Certificate::from_der(buffer)?;
+
+        return self.use_custom_certificate(cert);
+    }
+
+    fn use_custom_certificate(&mut self, certificate: reqwest::tls::Certificate) -> Result<(), Box<dyn std::error::Error>> {
+        self.config.cert = Some(certificate);
+        self.client = self.config.build_reqwest_client()?;
+
+        return Ok(())
     }
 
     // True by default
