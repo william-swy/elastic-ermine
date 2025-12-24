@@ -87,3 +87,15 @@ pub mod cli {
         return client;
     }
 }
+
+pub mod util {
+    pub fn path_has_extension(path: &std::path::Path, extension_to_match: &str) -> bool {
+        path.extension().map(|extension| {
+            extension.eq_ignore_ascii_case(extension_to_match)
+        }).unwrap_or(false)
+    }
+
+    pub fn valid_url(url_str: &str) -> bool {
+        reqwest::Url::parse(url_str).is_ok()
+    }
+}

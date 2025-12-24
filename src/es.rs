@@ -6,13 +6,13 @@ pub enum Auth {
     AWS(AwsSigv4)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BasicAuth {
     pub username: String,
     pub password: Option<String>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AwsSigv4 {
     pub region: String,
     pub profile: Option<String>,
@@ -128,7 +128,7 @@ impl ElasticsearchClient {
         return self.use_custom_certificate(cert);
     }
 
-    fn use_custom_certificate(&mut self, certificate: reqwest::tls::Certificate) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn use_custom_certificate(&mut self, certificate: reqwest::tls::Certificate) -> Result<(), Box<dyn std::error::Error>> {
         self.config.cert = Some(certificate);
         self.client = self.config.build_reqwest_client()?;
 
