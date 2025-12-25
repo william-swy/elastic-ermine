@@ -201,7 +201,10 @@ impl ElasticsearchClient {
 
         let request = self.request_add_auth(builder).await?;
 
-        let res = self.client.execute(request).await?.text().await?;
+        let res = self.client.execute(request).await?
+            .error_for_status()?
+            .text()
+            .await?;
 
         Ok(serde_json::from_str::<Vec<ElasticSearchIndex>>(&res)?)
     }
@@ -214,7 +217,10 @@ impl ElasticsearchClient {
 
         let request = self.request_add_auth(builder).await?;
 
-        let res = self.client.execute(request).await?.text().await?;
+        let res = self.client.execute(request).await?
+            .error_for_status()?
+            .text()
+            .await?;
 
         Ok(serde_json::from_str::<Vec<ElasticSearchAlias>>(&res)?)
     }
