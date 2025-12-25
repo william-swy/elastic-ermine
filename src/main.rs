@@ -20,7 +20,6 @@ fn main() -> iced::Result {
 
 #[derive(Debug, Clone)]
 enum Message {
-    ConnectionConfigVisibility(bool),
     AuthSelected(AuthChoice),
     UrlChanged(String),
     
@@ -36,6 +35,9 @@ enum Message {
 
     TestConnectionButtonPressed,
     TestConnectionButtonResultReturned(Result<(), MyAppError>),
+
+
+    PageChanged(Page),
 }
 
 #[derive(Debug, Clone)]
@@ -52,7 +54,6 @@ enum AuthChoice {
 
 #[derive(Debug)]
 struct MyApp{
-    connection_config_visible: bool,
     cert_selection_open: bool,
 
     auth_choice_type: Option<AuthChoice>,
@@ -63,6 +64,8 @@ struct MyApp{
     selected_cert: Result<Option<(std::path::PathBuf, reqwest::Certificate)>, MyAppError>,
 
     test_connection_button_state: TestConnectionButtonState,
+
+    current_page: Page,
 }
 
 #[derive(Debug)]
@@ -72,10 +75,17 @@ enum TestConnectionButtonState {
     Result(Result<(), MyAppError>)
 }
 
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
+enum Page {
+    #[default]
+    Search,
+    Connection,
+    Logs
+}
+
 impl Default for MyApp {
     fn default() -> Self {
         Self { 
-            connection_config_visible: false, 
             auth_choice_type: Some(AuthChoice::None), 
             auth_choice_basic: es::BasicAuth {
                 username: String::from("elastic"),
@@ -90,13 +100,11 @@ impl Default for MyApp {
             cert_selection_open: false,
 
             test_connection_button_state: TestConnectionButtonState::NotClicked,
+
+            current_page: Default::default(),
         }
     }
 }
-
-const TOP_PADDING: f32 = 32.0;
-const BOT_PADDING: f32 = 32.0;
-const SIDE_PADDING: f32 = 64.0;
 
 impl MyApp {
     fn new() -> (Self, iced::Task<Message>) {
@@ -108,18 +116,14 @@ impl MyApp {
 
     fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
-            Message::ConnectionConfigVisibility(is_visible) => {
-                self.connection_config_visible = is_visible;
-                return iced::Task::none();
-            }
             Message::AuthSelected(auth_choice) => {
                 self.auth_choice_type = Some(auth_choice);
-                return iced::Task::none();
+                iced::Task::none()
             }
             Message::UrlChanged(url) => {
                 let valid = util::valid_url(&url);
                 self.es_url = (url, valid);
-                return iced::Task::none();
+                iced::Task::none()
             }
             Message::SelectCert => {
                 if self.cert_selection_open {
@@ -135,15 +139,15 @@ impl MyApp {
             Message::ObtainCert(res) => {
                 self.cert_selection_open = false;
                 self.selected_cert = res;
-                return iced::Task::none();
+                iced::Task::none()
             }
             Message::RemoveCert => {
                 self.selected_cert = Ok(None);
-                return iced::Task::none();
+                iced::Task::none()
             },
             Message::BasicAuthUsernameChanged(username) => {
                 self.auth_choice_basic.username = username;
-                return iced::Task::none();
+                iced::Task::none()
             },
             Message::BasicAuthPasswordChanged(password) => {
                 if password.is_empty() {
@@ -151,24 +155,24 @@ impl MyApp {
                 } else {
                     self.auth_choice_basic.password = Some(password);
                 }
-                return iced::Task::none();
+                iced::Task::none()
             },
             Message::TestConnectionButtonPressed => {
                 self.test_connection_button_state = TestConnectionButtonState::Waiting;
-                return iced::Task::perform(
+                iced::Task::perform(
                     MyApp::test_connection(
                         self.es_url.0.clone(), 
                         self.selected_cert.clone(), 
                         self.get_es_auth()), 
-                    Message::TestConnectionButtonResultReturned);
+                    Message::TestConnectionButtonResultReturned)
             },
             Message::TestConnectionButtonResultReturned(res) => {
                 self.test_connection_button_state = TestConnectionButtonState::Result(res);
-                return iced::Task::none();
+                iced::Task::none()
             },
             Message::AWSAuthRegionChanged(new_region) => {
                 self.auth_choice_aws.region = new_region;
-                return iced::Task::none();
+                iced::Task::none()
             },
             Message::AWSAuthProfileChanged(profile) => {
                 if profile.is_empty() {
@@ -176,119 +180,144 @@ impl MyApp {
                 } else {
                     self.auth_choice_aws.profile = Some(profile);
                 }
-                return iced::Task::none();
+                iced::Task::none()
+            },
+            Message::PageChanged(page) => {
+                if page != self.current_page {
+                    self.current_page = page;
+                }
+
+                iced::Task::none()
             },
         }
     }
 
     fn view(&self) -> iced::Element<'_, Message> {
-        iced::widget::container(
-            iced::widget::column![
-                iced::widget::container(
-                    iced::widget::column![
-                        iced::widget::row![
-                            iced::widget::column![
-                                iced::widget::text("Elastic Ermine")
-                                .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::default()})
-                                .size(30),
-                                iced::widget::text("Search your data with Elasticsearch")
-                                .font(iced::Font { weight: iced::font::Weight::Light, ..iced::Font::default()})
-                                .size(14)
-                            ],
-                            iced::widget::space::horizontal(),
-                            self.connection_button()
-                        ].align_y(iced::alignment::Vertical::Center),
-                        self.connection_config()
-                    ]
-                ).align_y(iced::alignment::Vertical::Top),
-                self.search_section(),
+        column![
+            self.header()
+                .align_x(iced::alignment::Horizontal::Left)
+                .align_y(iced::alignment::Vertical::Top)
+                .width(iced::Fill)
+                .height(iced::Shrink),
+            iced::widget::rule::horizontal(2),
+            row![
+                self.window_selector()
+                    .align_x(iced::alignment::Horizontal::Left)
+                    .align_y(iced::alignment::Vertical::Top)
+                    .width(iced::Shrink)
+                    .height(iced::Fill),
+                iced::widget::rule::vertical(2),    
+                self.main_window()
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .width(iced::Fill)
+                    .height(iced::Fill),
             ]
-        )
-        .align_x(iced::alignment::Horizontal::Center)
-        .align_y(iced::alignment::Vertical::Center)
+            .width(iced::Fill)
+            .spacing(5)
+        ]
         .width(iced::Fill)
         .height(iced::Fill)
-        .padding(iced::Padding{top: TOP_PADDING, bottom: BOT_PADDING, left: SIDE_PADDING, right: SIDE_PADDING})
         .into()
+
     }
 
-
-    fn connection_button(&self) -> iced::widget::Button<'_, Message> {
-        let text = if self.connection_config_visible {
-            "Hide Connection Config"
-        } else {
-            "Connection Config"
-        };
-
-        return iced::widget::button(iced::widget::text(text))
-            .on_press(Message::ConnectionConfigVisibility(!self.connection_config_visible));
+    fn header(&self) -> iced::widget::Container<'_, Message> {
+        iced::widget::container(
+            column![
+                iced::widget::text("Elastic Ermine")
+                    .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::default()})
+                    .size(30),
+                iced::widget::text("Search your data with Elasticsearch")
+                    .font(iced::Font { weight: iced::font::Weight::Light, ..iced::Font::default()})
+                    .size(14),
+            ].spacing(5)
+        )
     }
 
-    fn connection_config(&self) -> Option<iced::widget::Column<'_, Message>> {
-        let content = self.connection_config_visible
-        .then_some(column![
-                iced::widget::text("Elasticsearch Connection"),
-                iced::widget::text("Elasticsearch URL"),
-                iced::widget::text_input("https://elasticsearch.example.com:9200", &self.es_url.0)
-                    .on_input(Message::UrlChanged),
-                self.es_url.0.is_empty().then(|| {
-                    iced::widget::text("Elasticsearch URL is required")
-                }),
-                (!self.es_url.0.is_empty() && !self.es_url.1).then(|| {
-                    iced::widget::text("Invalid URL format")
-                }),
-                iced::widget::text("Authentication Method"),
-                row![
-                    iced::widget::radio("Basic Auth", AuthChoice::Basic, self.auth_choice_type, Message::AuthSelected),
-                    iced::widget::radio("AWS SigV4", AuthChoice::AWSSigV4, self.auth_choice_type, Message::AuthSelected),
-                    iced::widget::radio("None", AuthChoice::None, self.auth_choice_type, Message::AuthSelected)
-                ],
-                self.auth_choice_type.map(|choice| {
-                    match choice {
-                        AuthChoice::Basic => Some(column![
-                            iced::widget::text("Username"),
-                            iced::widget::text_input("username", &self.auth_choice_basic.username)
-                                .on_input(Message::BasicAuthUsernameChanged),
-                            iced::widget::text("Password (Optional)"),
-                            iced::widget::text_input("", self.auth_choice_basic.password.as_ref().map(|s| s.as_str()).unwrap_or(""))
-                                .on_input(Message::BasicAuthPasswordChanged),
-                        ]),
-                        AuthChoice::AWSSigV4 => Some(column![
-                            iced::widget::text("AWS Region"),
-                            iced::widget::text_input("us-east-1", &self.auth_choice_aws.region)
-                                .on_input(Message::AWSAuthRegionChanged),
-                            iced::widget::text("AWS Profile"),
-                            iced::widget::text_input("default", self.auth_choice_aws.profile.as_ref().map(|s| s.as_str()).unwrap_or(""))
-                                .on_input(Message::AWSAuthProfileChanged)
-                        ]),
-                        AuthChoice::None => None,
-                    }
-                }).flatten(),
-                iced::widget::text("CA certificate file (optional)"),
-                self.selected_cert.as_ref().ok().and_then(Option::as_ref)
-                    .map(|(cert_path, _)| {
-                        row![
-                            iced::widget::text(
-                                cert_path.file_name()
-                                    .expect("Unable to get file name of cert")
-                                    .to_string_lossy()
-                            ),
-                            iced::widget::button(iced::widget::text("x"))
-                                .on_press(Message::RemoveCert)
-                        ]
-                    })
-                    .unwrap_or(
-                        row![iced::widget::button("Upload Certificate (.pem or .der)")
-                                .on_press_maybe((!self.cert_selection_open).then(|| Message::SelectCert))]
-                    ),
-                self.selected_cert.as_ref().err().map(|x| {
-                    iced::widget::text(format!("Failed to get certificate\n {}", x.reason))
-                }),
-                self.test_connection_button(),
-            ]
-        );
+    fn window_selector(&self) -> iced::widget::Container<'_, Message> {
+        iced::widget::container(
+            column![
+                iced::widget::button("Search")
+                    .on_press(Message::PageChanged(Page::Search)),
+                iced::widget::button("Connection")
+                    .on_press(Message::PageChanged(Page::Connection)),
+                iced::widget::button("Logs")
+                    .on_press(Message::PageChanged(Page::Logs)),
+            ].spacing(5)
+        )
+    }
 
-        return content;
+    fn main_window(&self) -> iced::widget::Container<'_, Message> {
+        iced::widget::container(
+            match self.current_page {
+                Page::Search => self.search_section(),
+                Page::Connection => self.connection_config_section(),
+                Page::Logs => self.logs_section(),
+            }
+        )
+    }
+
+    fn connection_config_section(&self) -> iced::widget::Column<'_, Message> {
+        column![
+            iced::widget::text("Elasticsearch Connection"),
+            iced::widget::text("Elasticsearch URL"),
+            iced::widget::text_input("https://elasticsearch.example.com:9200", &self.es_url.0)
+                .on_input(Message::UrlChanged),
+            self.es_url.0.is_empty().then(|| {
+                iced::widget::text("Elasticsearch URL is required")
+            }),
+            (!self.es_url.0.is_empty() && !self.es_url.1).then(|| {
+                iced::widget::text("Invalid URL format")
+            }),
+            iced::widget::text("Authentication Method"),
+            row![
+                iced::widget::radio("Basic Auth", AuthChoice::Basic, self.auth_choice_type, Message::AuthSelected),
+                iced::widget::radio("AWS SigV4", AuthChoice::AWSSigV4, self.auth_choice_type, Message::AuthSelected),
+                iced::widget::radio("None", AuthChoice::None, self.auth_choice_type, Message::AuthSelected)
+            ],
+            self.auth_choice_type.map(|choice| {
+                match choice {
+                    AuthChoice::Basic => Some(column![
+                        iced::widget::text("Username"),
+                        iced::widget::text_input("username", &self.auth_choice_basic.username)
+                            .on_input(Message::BasicAuthUsernameChanged),
+                        iced::widget::text("Password (Optional)"),
+                        iced::widget::text_input("", self.auth_choice_basic.password.as_ref().map(|s| s.as_str()).unwrap_or(""))
+                            .on_input(Message::BasicAuthPasswordChanged),
+                    ]),
+                    AuthChoice::AWSSigV4 => Some(column![
+                        iced::widget::text("AWS Region"),
+                        iced::widget::text_input("us-east-1", &self.auth_choice_aws.region)
+                            .on_input(Message::AWSAuthRegionChanged),
+                        iced::widget::text("AWS Profile"),
+                        iced::widget::text_input("default", self.auth_choice_aws.profile.as_ref().map(|s| s.as_str()).unwrap_or(""))
+                            .on_input(Message::AWSAuthProfileChanged)
+                    ]),
+                    AuthChoice::None => None,
+                }
+            }).flatten(),
+            iced::widget::text("CA certificate file (optional)"),
+            self.selected_cert.as_ref().ok().and_then(Option::as_ref)
+                .map(|(cert_path, _)| {
+                    row![
+                        iced::widget::text(
+                            cert_path.file_name()
+                                .expect("Unable to get file name of cert")
+                                .to_string_lossy()
+                        ),
+                        iced::widget::button(iced::widget::text("x"))
+                            .on_press(Message::RemoveCert)
+                    ]
+                })
+                .unwrap_or(
+                    row![iced::widget::button("Upload Certificate (.pem or .der)")
+                            .on_press_maybe((!self.cert_selection_open).then(|| Message::SelectCert))]
+                ),
+            self.selected_cert.as_ref().err().map(|x| {
+                iced::widget::text(format!("Failed to get certificate\n {}", x.reason))
+            }),
+            self.test_connection_button(),
+        ]
     }
 
     fn test_connection_button(&self) -> iced::widget::Column<'_, Message> {
@@ -315,13 +344,12 @@ impl MyApp {
     }
 
 
-    fn search_section(&self) -> iced::widget::Container<'_, Message> {
-        let content = column![iced::widget::text("Search")];
-        return iced::widget::container(content)
-            .align_x(iced::alignment::Horizontal::Center)
-            .align_y(iced::alignment::Vertical::Top)
-            .width(iced::Length::Fill)
-            .height(iced::Length::Fill);
+    fn search_section(&self) -> iced::widget::Column<'_, Message> {
+        column![iced::widget::text("Search")]
+    }
+
+    fn logs_section(&self) -> iced::widget::Column<'_, Message> {
+        column![iced::widget::text("Logs")]
     }
 
     fn get_es_auth(&self) -> Option<es::Auth> {
