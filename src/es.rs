@@ -1,4 +1,5 @@
 use aws_credential_types::provider::ProvideCredentials;
+use std::fmt::Write;
 
 #[derive(Debug)]
 pub enum Auth {
@@ -64,15 +65,29 @@ impl std::fmt::Display for ElasticSearchError {
 
 impl std::error::Error for ElasticSearchError {}
 
-#[derive(Clone)]
+#[derive(serde::Deserialize)]
 pub struct ElasticSearchIndex {
+    #[serde(rename = "index")]
     pub name: String,
     pub uuid: String,
+    #[serde(rename = "pri")]
     pub primary_shard_count: String,
+    #[serde(rename = "rep")]
     pub replica_shard_count: String,
+    #[serde(default, rename="docs.count")]
     pub docs_count: Option<String>,
+    #[serde(default, rename="docs.deleted")]
     pub docs_deleted_count: Option<String>,
+    #[serde(default, rename="dataset.size")]
     pub dataset_size: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ElasticSearchAlias {
+    #[serde(rename = "alias")]
+    pub name: String,
+    #[serde(rename = "index")]
+    pub index_ref: String,
 }
 
 pub enum ElasticSearchMethodType {
@@ -150,7 +165,15 @@ impl ElasticsearchClient {
 
         let request = self.request_add_auth(builder).await?;
 
-        self.client.execute(request).await?.error_for_status()?;
+        self.client.execute(request).await.map_err(|err| {
+            let msg = ElasticsearchClient::report(&err);
+            println!("error report: {}", msg);
+            ElasticSearchError {
+                err: msg,
+            }
+        })?.error_for_status()?;
+
+        // TODO check if response matches expected
 
         return Ok(());
     }
@@ -180,15 +203,20 @@ impl ElasticsearchClient {
 
         let res = self.client.execute(request).await?.text().await?;
 
-        let json: serde_json::Value = serde_json::from_str(&res)?;
+        Ok(serde_json::from_str::<Vec<ElasticSearchIndex>>(&res)?)
+    }
 
-        let res = json.as_array()
-            .ok_or(ElasticSearchError::new("Response was not an array".to_owned()))?
-            .iter()
-            .map(ElasticsearchClient::parse_indicices_response)
-        .collect::<Result<Vec<_>, _>>()?;
+    pub async fn get_aliases(&self) -> Result<Vec<ElasticSearchAlias>, Box<dyn std::error::Error>> {
+        let base_url = reqwest::Url::parse(&self.config.root_url)?;
+        let url = base_url.join("_cat/aliases?format=json")?;
 
-        return Ok(res);
+        let builder = self.client.get(url);
+
+        let request = self.request_add_auth(builder).await?;
+
+        let res = self.client.execute(request).await?.text().await?;
+
+        Ok(serde_json::from_str::<Vec<ElasticSearchAlias>>(&res)?)
     }
 
     pub async fn operation(&self, method_type: ElasticSearchMethodType, path: &str, body: Option<&serde_json:: Value>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
@@ -210,77 +238,6 @@ impl ElasticsearchClient {
         let json = serde_json::from_str(&res)?;
 
         return Ok(json);
-    }
-
-    fn parse_indicices_response(val: &serde_json::Value) -> Result<ElasticSearchIndex, Box<dyn std::error::Error>> {
-        let name = val["index"]
-            .as_str()
-            .ok_or(
-                ElasticSearchError::new(
-                    format!("index entry was not a valid string: {}", val["index"]).to_owned()
-                )
-            )?
-            .to_owned();
-
-        let uuid = val["uuid"]
-            .as_str()
-            .ok_or(
-                ElasticSearchError::new(
-                    format!("uuid entry is not in expected string format: {}", val["uuid"]).to_owned()
-                )
-            )?
-            .to_owned();
-        let primary_shard_count = val["pri"]
-            .as_str()
-            .ok_or(
-                ElasticSearchError::new(
-                    format!("pri entry is not in expected string format: {}", val["pri"]).to_owned()
-                )
-            )?
-            .to_owned();
-        let replica_shard_count = val["rep"]
-            .as_str()
-            .ok_or(
-                ElasticSearchError::new(
-                    format!("rep entry is not in expected string format: {}", val["rep"]).to_owned()
-                )
-            )?
-            .to_owned();
-        let docs_count = match &val["docs.count"] {
-            serde_json::Value::Null => Ok(None),
-            serde_json::Value::String(count_str) => Ok(Some(count_str.to_owned())),
-            _ => Err(ElasticSearchError::new(
-                format!("docs.count entry is not null or a string: {}", val["docs.count"])
-            )),
-        }?;
-
-        let docs_deleted_count = match &val["docs.deleted"] {
-            serde_json::Value::Null => Ok(None),
-            serde_json::Value::String(count_str) => Ok(Some(count_str.to_owned())),
-            _ => Err(ElasticSearchError::new(
-                format!("docs.deleted entry is not null or a string: {}", val["docs.deleted"])
-            )),
-        }?;
-
-        let dataset_size = match &val["dataset.size"] {
-            serde_json::Value::Null => Ok(None),
-            serde_json::Value::String(count_str) => Ok(Some(count_str.to_owned())),
-            _ => Err(ElasticSearchError::new(
-                format!("dataset.size entry is not null or a string: {}", val["dataset.size"])
-            )),
-        }?;
-
-        return Ok(
-            ElasticSearchIndex { 
-                name, 
-                uuid, 
-                primary_shard_count, 
-                replica_shard_count, 
-                docs_count, 
-                docs_deleted_count, 
-                dataset_size
-            }
-        );
     }
 
     async fn sign_request_sigv4(request: &mut reqwest::Request, config: &AwsSigv4) -> Result<(), Box<dyn std::error::Error>> {
@@ -345,5 +302,15 @@ impl ElasticsearchClient {
         }
 
         return Ok(())
+    }
+
+    // TODO add this for all reqwest error
+    fn report(mut err: &dyn std::error::Error) -> String {
+        let mut s = format!("{}", err);
+        while let Some(src) = err.source() {
+            let _ = write!(s, "\n\nCaused by: {}", src);
+            err = src;
+        }
+        s
     }
 }
