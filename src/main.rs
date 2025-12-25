@@ -3,8 +3,18 @@ use elastic_ermine::{es,util};
 use iced::widget::{column, row};
 
 fn main() -> iced::Result {
+    let window = iced::window::Settings {
+        icon: Some(iced::window::icon::from_file_data(
+            include_bytes!("../icons/logo.png"), 
+            Some(image::ImageFormat::Png)).map_err(|err| {
+                iced::Error::WindowCreationFailed(Box::new(err))
+            }
+        )?),
+        ..Default::default()
+    };
     iced::application(MyApp::new, MyApp::update, MyApp::view)
         .title("Elastic Ermine")
+        .window(window)
         .run()
 }
 
