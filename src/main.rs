@@ -20,6 +20,10 @@ fn main() -> iced::Result {
 
 #[derive(Debug, Clone)]
 enum Message {
+    // General type messages
+    PageChanged(Page),
+
+    // Connection related messages
     AuthSelected(AuthChoice),
     UrlChanged(String),
     
@@ -36,8 +40,11 @@ enum Message {
     TestConnectionButtonPressed,
     TestConnectionButtonResultReturned(Result<(), MyAppError>),
 
+    // Search related messages
+    SearchTypeChanged(SearchType),
+    QueryDSLEditorActionPerformed(iced::widget::text_editor::Action)
 
-    PageChanged(Page),
+    
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +61,10 @@ enum AuthChoice {
 
 #[derive(Debug)]
 struct MyApp{
+    // general state
+    current_page: Page,
+
+    // auth related state
     cert_selection_open: bool,
 
     auth_choice_type: Option<AuthChoice>,
@@ -65,7 +76,11 @@ struct MyApp{
 
     test_connection_button_state: TestConnectionButtonState,
 
-    current_page: Page,
+    // search related state
+    search_type: SearchType,
+    indicies: Vec<String>,
+    aliases: Vec<String>,
+    query_dsl_content: iced::widget::text_editor::Content,
 }
 
 #[derive(Debug)]
@@ -75,7 +90,7 @@ enum TestConnectionButtonState {
     Result(Result<(), MyAppError>)
 }
 
-#[derive(Debug, Default, Eq, PartialEq, Clone)]
+#[derive(Debug, Default, Clone)]
 enum Page {
     #[default]
     Search,
@@ -83,9 +98,20 @@ enum Page {
     Logs
 }
 
+#[derive(Debug, Default, Clone)]
+enum SearchType {
+    StringSearch,
+    #[default]
+    QueryDSL,
+    EndpointOperations,
+}
+
 impl Default for MyApp {
     fn default() -> Self {
         Self { 
+            current_page: Default::default(),
+
+
             auth_choice_type: Some(AuthChoice::None), 
             auth_choice_basic: es::BasicAuth {
                 username: String::from("elastic"),
@@ -101,7 +127,10 @@ impl Default for MyApp {
 
             test_connection_button_state: TestConnectionButtonState::NotClicked,
 
-            current_page: Default::default(),
+            search_type: Default::default(),
+            indicies: Vec::new(),
+            aliases: Vec::new(),
+            query_dsl_content: Default::default()
         }
     }
 }
@@ -183,10 +212,16 @@ impl MyApp {
                 iced::Task::none()
             },
             Message::PageChanged(page) => {
-                if page != self.current_page {
-                    self.current_page = page;
-                }
+                self.current_page = page;
 
+                iced::Task::none()
+            },
+            Message::SearchTypeChanged(search_type) => {
+                self.search_type = search_type;
+                iced::Task::none()
+            },
+            Message::QueryDSLEditorActionPerformed(action) => {
+                self.query_dsl_content.perform(action);
                 iced::Task::none()
             },
         }
@@ -345,11 +380,96 @@ impl MyApp {
 
 
     fn search_section(&self) -> iced::widget::Column<'_, Message> {
-        column![iced::widget::text("Search")]
+        column![
+            self.search_options(),
+            match self.search_type {
+                SearchType::StringSearch => self.search_string_search(),
+                SearchType::QueryDSL => self.search_query_dsl(),
+                SearchType::EndpointOperations => self.search_endpoint_operations(),
+            }
+            .align_x(iced::alignment::Horizontal::Center)
+            .width(iced::Fill)
+            .height(iced::Fill),
+        ].spacing(10)
+    }
+
+    fn search_options(&self) -> iced::widget::Row<'_, Message> {
+        row![
+            iced::widget::button("String Search")
+                .on_press(Message::SearchTypeChanged(SearchType::StringSearch)),
+            iced::widget::button("Query DSL")
+                .on_press(Message::SearchTypeChanged(SearchType::QueryDSL)),
+            iced::widget::button("Endpoint Operations")
+                .on_press(Message::SearchTypeChanged(SearchType::EndpointOperations)),
+        ]
+    }
+
+    fn search_string_search(&self) -> iced::widget::Container<'_, Message> {
+        iced::widget::container(
+            iced::widget::text("String Search WIP")
+        )
+    }
+
+    fn search_query_dsl(&self) -> iced::widget::Container<'_, Message> {
+        iced::widget::container(
+            row![
+                self.search_filters()
+                    .align_x(iced::alignment::Horizontal::Left)
+                    .width(iced::Shrink)
+                    .height(iced::Shrink),
+                column![
+                    iced::widget::text_editor(&self.query_dsl_content) // perhaps make this scrollable
+                        // .id(QUERY_DSL_EDITOR)
+                        .on_action(Message::QueryDSLEditorActionPerformed)
+                        .height(iced::Length::FillPortion(3)),
+                    self.search_button_search()
+                        .width(iced::Shrink)
+                        .height(iced::Shrink),
+                    self.query_result_view() // perhaps make this scrollable
+                        .width(iced::Fill)
+                        .height(iced::Length::FillPortion(2))
+                ]
+                .width(iced::Fill)
+                .height(iced::Fill)
+            ]
+        )
+    }
+
+    fn search_button_search(&self) -> iced::widget::Button<'_, Message> {
+        iced::widget::button("Search")
+    }
+
+    fn query_result_view(&self) -> iced::widget::Container<'_, Message> {
+        iced::widget::container(
+            iced::widget::text(
+                "Enter a query above to search your Elasticsearch cluster. Use the filters on the left to refine your results."
+            )
+            .align_x(iced::Center)
+            .align_y(iced::Center)
+        )
+    }
+
+    fn search_endpoint_operations(&self) -> iced::widget::Container<'_, Message> {
+        iced::widget::container(
+            iced::widget::text("Endpoint operations WIP")
+        )
+    }
+
+    fn search_filters(&self) -> iced::widget::Column<'_, Message> {
+        let filters = column![
+            iced::widget::text("Filters"),
+            iced::widget::text("Indicies"),
+        ];
+
+        let filters = filters.extend(self.indicies.iter().map(|index|iced::widget::text(index).into()));
+
+        let filters = filters.push(iced::widget::text("Aliases"));
+
+        filters.extend(self.aliases.iter().map(|alias|iced::widget::text(alias).into()))
     }
 
     fn logs_section(&self) -> iced::widget::Column<'_, Message> {
-        column![iced::widget::text("Logs")]
+        column![iced::widget::text("Logs WIP")]
     }
 
     fn get_es_auth(&self) -> Option<es::Auth> {
@@ -429,3 +549,5 @@ impl MyApp {
             .map_err(|err| MyAppError{reason: err.to_string()});
     }
 }
+
+// const QUERY_DSL_EDITOR: &str = "query_dsl_editor";
