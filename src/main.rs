@@ -42,6 +42,11 @@ enum Message {
 
     // Search related messages
     SearchTypeChanged(SearchType),
+    SearchFilterRefreshPressed,
+    SearchFilterRefreshed(Result<(Vec<String>, Vec<String>), MyAppError>),
+    SearchFilterAddItem(String),
+    SearchFilterRemoveItem(String),
+
     QueryDSLEditorActionPerformed(iced::widget::text_editor::Action)
 
     
@@ -78,8 +83,12 @@ struct MyApp{
 
     // search related state
     search_type: SearchType,
+    search_error: Option<String>,
+
+    refresh_search_filter_button_state: RefreshSearchFilterButtonState,
     indicies: Vec<String>,
     aliases: Vec<String>,
+    selected_indicies_and_aliases: std::collections::HashSet<String>,
     query_dsl_content: iced::widget::text_editor::Content,
 }
 
@@ -106,11 +115,17 @@ enum SearchType {
     EndpointOperations,
 }
 
+#[derive(Debug, Default)]
+enum RefreshSearchFilterButtonState {
+    #[default]
+    Ready,
+    Waiting,
+}
+
 impl Default for MyApp {
     fn default() -> Self {
         Self { 
             current_page: Default::default(),
-
 
             auth_choice_type: Some(AuthChoice::None), 
             auth_choice_basic: es::BasicAuth {
@@ -128,8 +143,11 @@ impl Default for MyApp {
             test_connection_button_state: TestConnectionButtonState::NotClicked,
 
             search_type: Default::default(),
+            search_error: None,
+            refresh_search_filter_button_state: Default::default(),
             indicies: Vec::new(),
             aliases: Vec::new(),
+            selected_indicies_and_aliases: std::collections::HashSet::new(),
             query_dsl_content: Default::default()
         }
     }
@@ -224,6 +242,47 @@ impl MyApp {
                 self.query_dsl_content.perform(action);
                 iced::Task::none()
             },
+            Message::SearchFilterRefreshPressed => {
+                self.refresh_search_filter_button_state = RefreshSearchFilterButtonState::Waiting;
+                iced::Task::perform(
+                    MyApp::get_all_indices_and_aliases(
+                        self.es_url.0.clone(), 
+                        self.selected_cert.clone(), 
+                        self.get_es_auth()
+                    ),
+                    Message::SearchFilterRefreshed
+                )
+            },
+            Message::SearchFilterRefreshed(res) => {
+                self.refresh_search_filter_button_state = RefreshSearchFilterButtonState::Ready;
+
+                match res {
+                    Ok((indicies, aliases)) => {
+                        self.aliases = aliases;
+                        self.indicies = indicies;
+                        self.search_error = None;
+                    },
+                    Err(err) => {
+                        self.aliases = Vec::new();
+                        self.indicies = Vec::new();
+                        self.search_error = Some(format!("Failed to refresh filters: {}", err.reason)); 
+                    },
+                };
+
+                // TODO: update selected list using the updated list of aliases and indicies. Existing
+                // selected indicies and aliases that are in the update list can remain selected. Otherwise
+                // they should be unselected. For now refreshing will remove all selected filters
+                self.selected_indicies_and_aliases.clear();
+                iced::Task::none()
+            },
+            Message::SearchFilterAddItem(filter_item) => {
+                self.selected_indicies_and_aliases.insert(filter_item);
+                iced::Task::none()
+            },
+            Message::SearchFilterRemoveItem(filter_item) => {
+                self.selected_indicies_and_aliases.remove(&filter_item);
+                iced::Task::none()
+            },
         }
     }
 
@@ -262,7 +321,7 @@ impl MyApp {
                 iced::widget::text("Elastic Ermine")
                     .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::default()})
                     .size(30),
-                iced::widget::text("Search your data with Elasticsearch")
+                iced::widget::text("Search your data with Elasticsearch ... or Opensearch")
                     .font(iced::Font { weight: iced::font::Weight::Light, ..iced::Font::default()})
                     .size(14),
             ].spacing(5)
@@ -419,7 +478,6 @@ impl MyApp {
                     .height(iced::Shrink),
                 column![
                     iced::widget::text_editor(&self.query_dsl_content) // perhaps make this scrollable
-                        // .id(QUERY_DSL_EDITOR)
                         .on_action(Message::QueryDSLEditorActionPerformed)
                         .height(iced::Length::FillPortion(3)),
                     self.search_button_search()
@@ -441,11 +499,14 @@ impl MyApp {
 
     fn query_result_view(&self) -> iced::widget::Container<'_, Message> {
         iced::widget::container(
-            iced::widget::text(
-                "Enter a query above to search your Elasticsearch cluster. Use the filters on the left to refine your results."
-            )
-            .align_x(iced::Center)
-            .align_y(iced::Center)
+            column![
+                iced::widget::text(
+                    "Enter a query above to search your Elasticsearch cluster. Use the filters on the left to refine your results."
+                )
+                .align_x(iced::Center)
+                .align_y(iced::Center),
+                self.search_error.as_ref().map(|err_msg|iced::widget::text(format!("ERROR: {}", err_msg))) // TODO: think of better place to put this
+            ]
         )
     }
 
@@ -457,15 +518,48 @@ impl MyApp {
 
     fn search_filters(&self) -> iced::widget::Column<'_, Message> {
         let filters = column![
-            iced::widget::text("Filters"),
+            row![
+                iced::widget::text("Filters"),
+                match self.refresh_search_filter_button_state {
+                    RefreshSearchFilterButtonState::Ready => iced::widget::button("Refresh")
+                        .on_press(Message::SearchFilterRefreshPressed),
+                    RefreshSearchFilterButtonState::Waiting => iced::widget::button("Refreshing..."),
+                },
+            ],
             iced::widget::text("Indicies"),
         ];
 
-        let filters = filters.extend(self.indicies.iter().map(|index|iced::widget::text(index).into()));
+        let filters = filters.extend(
+            self.indicies
+                .iter()
+                .map(|index|
+                    iced::widget::checkbox(self.selected_indicies_and_aliases.contains(index))
+                        .label(index)
+                        .on_toggle(|toggled| {
+                            if toggled {
+                                Message::SearchFilterAddItem(index.to_owned())
+                            } else {
+                                Message::SearchFilterRemoveItem(index.to_owned())
+                            }
+                        })
+                        .into()));
 
         let filters = filters.push(iced::widget::text("Aliases"));
 
-        filters.extend(self.aliases.iter().map(|alias|iced::widget::text(alias).into()))
+        filters.extend(
+            self.aliases
+                .iter()
+                .map(|alias|
+                    iced::widget::checkbox(self.selected_indicies_and_aliases.contains(alias))
+                        .label(alias)
+                        .on_toggle(|toggled| {
+                            if toggled {
+                                Message::SearchFilterAddItem(alias.to_owned())
+                            } else {
+                                Message::SearchFilterRemoveItem(alias.to_owned())
+                            }
+                        })
+                        .into()))
     }
 
     fn logs_section(&self) -> iced::widget::Column<'_, Message> {
@@ -548,6 +642,37 @@ impl MyApp {
         return client.test_connection().await
             .map_err(|err| MyAppError{reason: err.to_string()});
     }
-}
 
-// const QUERY_DSL_EDITOR: &str = "query_dsl_editor";
+    async fn get_all_indices_and_aliases(
+        url: String, 
+        selected_cert: Result<Option<(std::path::PathBuf, reqwest::Certificate)>, MyAppError>, 
+        auth: Option<es::Auth>
+    ) -> Result<(Vec<String>, Vec<String>), MyAppError> {
+        let mut client = es::ElasticsearchClient::new(url)
+            .map_err(|err| MyAppError{reason: err.to_string()})?;
+
+        if let Some((_, cert)) = selected_cert? {
+            client.use_custom_certificate(cert)
+                .map_err(|err| MyAppError{reason: err.to_string()})?;
+        }
+
+        if let Some(auth_choice) = auth {
+            client.use_auth(auth_choice);
+        }
+
+        let indicies = client.get_indicies().await
+            .map_err(|err| MyAppError{reason: err.to_string()})?
+            .into_iter()
+            .map(|idx| idx.name)
+            .collect::<Vec<String>>();
+
+        let aliases = client.get_aliases().await
+            .map_err(|err| MyAppError{reason: err.to_string()})?
+            .into_iter()
+            .map(|alias| alias.name)
+            .collect::<Vec<String>>();
+
+        Ok((indicies, aliases))
+    }
+
+}
