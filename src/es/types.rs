@@ -1,6 +1,6 @@
 // Does not include all fields in
 // https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-search#operation-search-responses
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, Clone)]
 pub struct OperationSearchResult {
     #[serde(rename = "took")]
     pub time_took_ms: serde_json::Number, 
@@ -12,14 +12,14 @@ pub struct OperationSearchResult {
     pub aggregations: Option<serde_json::Value>,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, Clone)]
 pub struct OperationSearchShardsUsed {
     pub failed: serde_json::Number,
     pub successful: serde_json::Number,
     pub total: serde_json::Number,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, Clone)]
 pub struct OperationSearchHits {
     pub hits: Vec<serde_json::Value>,
 }

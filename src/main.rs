@@ -47,8 +47,11 @@ enum Message {
     SearchFilterAddItem(String),
     SearchFilterRemoveItem(String),
 
-    QueryDSLEditorActionPerformed(iced::widget::text_editor::Action)
-
+    GenericSearchBodyEditorActionPerformed(iced::widget::text_editor::Action),
+    GenericSearchSearchButtonPressed,
+    // perhaps place OperationSearchResult in arc to prevent clone as contents can potentially
+    // be quite large
+    GenericSearchSearchButtonResultReturned(Result<es::types::OperationSearchResult, MyAppError>) 
     
 }
 
@@ -83,13 +86,25 @@ struct MyApp{
 
     // search related state
     search_type: SearchType,
-    search_error: Option<String>,
+    // search_error: Option<String>,
 
     refresh_search_filter_button_state: RefreshSearchFilterButtonState,
+    refresh_search_filter_error: Option<String>,
     indicies: Vec<String>,
     aliases: Vec<String>,
     selected_indicies_and_aliases: std::collections::HashSet<String>,
-    query_dsl_content: iced::widget::text_editor::Content,
+    generic_search_body_content: iced::widget::text_editor::Content,
+    generic_search_search_button_state: GenericSearchSearchButtonState,
+    generic_search_display_content: GenericSearchDisplaySectionValue,
+    // generic_search_result: Option<es::types::OperationSearchResult>,
+}
+
+#[derive(Debug, Default)]
+enum GenericSearchDisplaySectionValue {
+    #[default]
+    Default,
+    Error(String),
+    Result(es::types::OperationSearchResult)
 }
 
 #[derive(Debug)]
@@ -111,12 +126,19 @@ enum Page {
 enum SearchType {
     StringSearch,
     #[default]
-    QueryDSL,
+    GenericSearch,
     EndpointOperations,
 }
 
 #[derive(Debug, Default)]
 enum RefreshSearchFilterButtonState {
+    #[default]
+    Ready,
+    Waiting,
+}
+
+#[derive(Debug, Default)]
+enum GenericSearchSearchButtonState {
     #[default]
     Ready,
     Waiting,
@@ -143,12 +165,16 @@ impl Default for MyApp {
             test_connection_button_state: TestConnectionButtonState::NotClicked,
 
             search_type: Default::default(),
-            search_error: None,
+            // search_error: None,
             refresh_search_filter_button_state: Default::default(),
+            refresh_search_filter_error: None,
             indicies: Vec::new(),
             aliases: Vec::new(),
             selected_indicies_and_aliases: std::collections::HashSet::new(),
-            query_dsl_content: Default::default()
+            generic_search_body_content: Default::default(),
+            generic_search_search_button_state: Default::default(),
+            // generic_search_result: None, // make errors and this result into an enum
+            generic_search_display_content: Default::default()
         }
     }
 }
@@ -238,8 +264,8 @@ impl MyApp {
                 self.search_type = search_type;
                 iced::Task::none()
             },
-            Message::QueryDSLEditorActionPerformed(action) => {
-                self.query_dsl_content.perform(action);
+            Message::GenericSearchBodyEditorActionPerformed(action) => {
+                self.generic_search_body_content.perform(action);
                 iced::Task::none()
             },
             Message::SearchFilterRefreshPressed => {
@@ -260,12 +286,12 @@ impl MyApp {
                     Ok((indicies, aliases)) => {
                         self.aliases = aliases;
                         self.indicies = indicies;
-                        self.search_error = None;
+                        self.refresh_search_filter_error = None;
                     },
                     Err(err) => {
                         self.aliases = Vec::new();
                         self.indicies = Vec::new();
-                        self.search_error = Some(format!("Failed to refresh filters: {}", err.reason)); 
+                        self.refresh_search_filter_error = Some(format!("Failed to refresh filters: {}", err.reason)); 
                     },
                 };
 
@@ -281,6 +307,32 @@ impl MyApp {
             },
             Message::SearchFilterRemoveItem(filter_item) => {
                 self.selected_indicies_and_aliases.remove(&filter_item);
+                iced::Task::none()
+            },
+            Message::GenericSearchSearchButtonPressed => {
+                self.generic_search_search_button_state = GenericSearchSearchButtonState::Waiting;
+                iced::Task::perform(
+                    MyApp::perform_generic_search(
+                        self.es_url.0.clone(), 
+                        self.selected_cert.clone(), 
+                        self.get_es_auth(),
+                        self.generic_search_body_content.text(),
+                        self.selected_indicies_and_aliases.iter().map(String::to_owned).collect(),
+                    ),
+                    Message::GenericSearchSearchButtonResultReturned
+                )
+            },
+            Message::GenericSearchSearchButtonResultReturned(operation_search_result) => {
+                self.generic_search_search_button_state = GenericSearchSearchButtonState::Ready;
+                match operation_search_result {
+                    Ok(res) => {
+                        self.generic_search_display_content = GenericSearchDisplaySectionValue::Result(res);
+                    },
+                    Err(err) => {
+                        self.generic_search_display_content = GenericSearchDisplaySectionValue::Error(format!("Failed to search: {}", err.reason));
+                    },
+                }
+
                 iced::Task::none()
             },
         }
@@ -443,7 +495,7 @@ impl MyApp {
             self.search_options(),
             match self.search_type {
                 SearchType::StringSearch => self.search_string_search(),
-                SearchType::QueryDSL => self.search_query_dsl(),
+                SearchType::GenericSearch => self.generic_search_view(),
                 SearchType::EndpointOperations => self.search_endpoint_operations(),
             }
             .align_x(iced::alignment::Horizontal::Center)
@@ -456,8 +508,8 @@ impl MyApp {
         row![
             iced::widget::button("String Search")
                 .on_press(Message::SearchTypeChanged(SearchType::StringSearch)),
-            iced::widget::button("Query DSL")
-                .on_press(Message::SearchTypeChanged(SearchType::QueryDSL)),
+            iced::widget::button("Generic Search")
+                .on_press(Message::SearchTypeChanged(SearchType::GenericSearch)),
             iced::widget::button("Endpoint Operations")
                 .on_press(Message::SearchTypeChanged(SearchType::EndpointOperations)),
         ]
@@ -469,7 +521,7 @@ impl MyApp {
         )
     }
 
-    fn search_query_dsl(&self) -> iced::widget::Container<'_, Message> {
+    fn generic_search_view(&self) -> iced::widget::Container<'_, Message> {
         iced::widget::container(
             row![
                 self.search_filters()
@@ -477,13 +529,11 @@ impl MyApp {
                     .width(iced::Shrink)
                     .height(iced::Shrink),
                 column![
-                    iced::widget::text_editor(&self.query_dsl_content) // perhaps make this scrollable
-                        .on_action(Message::QueryDSLEditorActionPerformed)
+                    iced::widget::text_editor(&self.generic_search_body_content) // perhaps make this scrollable
+                        .on_action(Message::GenericSearchBodyEditorActionPerformed)
                         .height(iced::Length::FillPortion(3)),
-                    self.search_button_search()
-                        .width(iced::Shrink)
-                        .height(iced::Shrink),
-                    self.query_result_view() // perhaps make this scrollable
+                    self.generic_search_search_button(),
+                    self.generic_search_result_view() // perhaps make this scrollable
                         .width(iced::Fill)
                         .height(iced::Length::FillPortion(2))
                 ]
@@ -493,21 +543,44 @@ impl MyApp {
         )
     }
 
-    fn search_button_search(&self) -> iced::widget::Button<'_, Message> {
-        iced::widget::button("Search")
+    fn generic_search_result_view(&self) -> iced::widget::Container<'_, Message> {
+        iced::widget::container(
+            match &self.generic_search_display_content {
+                GenericSearchDisplaySectionValue::Default => column![
+                    iced::widget::text(
+                        "Enter a query above to search your Elasticsearch cluster. Use the filters on the left to refine your results."
+                    )
+                    .align_x(iced::Center)
+                    .align_y(iced::Center),
+                ],
+                GenericSearchDisplaySectionValue::Error(err) => column![
+                    iced::widget::text(
+                        format!("ERROR\nSearch failed: {}", err)
+                    )
+                    .align_x(iced::Center)
+                    .align_y(iced::Center),
+                ],
+                GenericSearchDisplaySectionValue::Result(res) => column![
+                    iced::widget::text(
+                        format!("{:?}", res)
+                    )
+                    .align_x(iced::Center)
+                    .align_y(iced::Center),
+                ],
+            }
+            
+        )
     }
 
-    fn query_result_view(&self) -> iced::widget::Container<'_, Message> {
-        iced::widget::container(
-            column![
-                iced::widget::text(
-                    "Enter a query above to search your Elasticsearch cluster. Use the filters on the left to refine your results."
-                )
-                .align_x(iced::Center)
-                .align_y(iced::Center),
-                self.search_error.as_ref().map(|err_msg|iced::widget::text(format!("ERROR: {}", err_msg))) // TODO: think of better place to put this
-            ]
-        )
+    fn generic_search_search_button(&self) -> iced::widget::Button<'_, Message> {
+        let produced_message = match self.generic_search_search_button_state {
+            GenericSearchSearchButtonState::Ready => Some(Message::GenericSearchSearchButtonPressed),
+            GenericSearchSearchButtonState::Waiting => None,
+        };
+        iced::widget::button("Search")
+            .on_press_maybe(produced_message)
+            .width(iced::Shrink)
+            .height(iced::Shrink)
     }
 
     fn search_endpoint_operations(&self) -> iced::widget::Container<'_, Message> {
@@ -526,6 +599,8 @@ impl MyApp {
                     RefreshSearchFilterButtonState::Waiting => iced::widget::button("Refreshing..."),
                 },
             ],
+            self.refresh_search_filter_error.as_ref()
+                .map(|err| iced::widget::text(format!("Failed to refresh filters: {}", err))),
             iced::widget::text("Indicies"),
         ];
 
@@ -673,6 +748,38 @@ impl MyApp {
             .collect::<Vec<String>>();
 
         Ok((indicies, aliases))
+    }
+
+    async fn perform_generic_search(
+        url: String, 
+        selected_cert: Result<Option<(std::path::PathBuf, reqwest::Certificate)>, MyAppError>, 
+        auth: Option<es::Auth>,
+        body: String,
+        indicies_and_aliases: Vec<String>
+    ) -> Result<es::types::OperationSearchResult, MyAppError> {
+        let mut client = es::ElasticsearchClient::new(url)
+            .map_err(|err| MyAppError{reason: err.to_string()})?;
+
+        if let Some((_, cert)) = selected_cert? {
+            client.use_custom_certificate(cert)
+                .map_err(|err| MyAppError{reason: err.to_string()})?;
+        }
+
+        if let Some(auth_choice) = auth {
+            client.use_auth(auth_choice);
+        }
+
+        let search_body = if body.is_empty() {
+            None
+        } else {
+            Some(serde_json::from_str::<serde_json::Value>(&body)
+                    .map_err(|err| MyAppError{reason: err.to_string()})?)
+        };
+
+        let res = client.search(&indicies_and_aliases, search_body.as_ref()).await
+            .map_err(|err| MyAppError{reason: err.to_string()})?;
+
+        Ok(res)
     }
 
 }
