@@ -11,6 +11,10 @@ path = "src/bin/list_indicies.rs"
 name = "get_documents"
 path = "src/bin/get_documents.rs"
 
+[[bin]]
+name = "search"
+path = "src/bin/search.rs"
+
 [dependencies]
 iced = { version = "0.14.0", features = ["svg", "tokio", "image"] }
 reqwest = { version = "0.12.26", features = ["rustls-tls", "json"] }

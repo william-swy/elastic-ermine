@@ -1,5 +1,7 @@
 use aws_credential_types::provider::ProvideCredentials;
 use std::fmt::Write;
+pub mod types;
+use crate::es::types::OperationSearchResult;
 
 #[derive(Debug)]
 pub enum Auth {
@@ -195,7 +197,7 @@ impl ElasticsearchClient {
 
     pub async fn get_indicies(&self) -> Result<Vec<ElasticSearchIndex>, Box<dyn std::error::Error>> {
         let base_url = reqwest::Url::parse(&self.config.root_url)?;
-        let url = base_url.join("_cat/indices?format=json")?;
+        let url = base_url.join("_cat/indices?expand_wildcards=open,closed&format=json")?;
 
         let builder = self.client.get(url);
 
@@ -211,7 +213,7 @@ impl ElasticsearchClient {
 
     pub async fn get_aliases(&self) -> Result<Vec<ElasticSearchAlias>, Box<dyn std::error::Error>> {
         let base_url = reqwest::Url::parse(&self.config.root_url)?;
-        let url = base_url.join("_cat/aliases?format=json")?;
+        let url = base_url.join("_cat/aliases?expand_wildcards=open,closed&format=json")?;
 
         let builder = self.client.get(url);
 
@@ -223,6 +225,38 @@ impl ElasticsearchClient {
             .await?;
 
         Ok(serde_json::from_str::<Vec<ElasticSearchAlias>>(&res)?)
+    }
+
+    /**
+     * Indicies can also include alias names. 
+     * indicies as an empty list implies all indicies
+     * See https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-search#operation-search-index
+     * for reference
+     **/
+    pub async fn search(&self, indicies: &Vec<String>, body_params: Option<&serde_json::Value>) -> Result<OperationSearchResult, Box<dyn std::error::Error>> {
+        let mut url = reqwest::Url::parse(&self.config.root_url)?;
+
+        if !indicies.is_empty() {
+            let index_path = indicies.join(",");
+            url = url.join(&index_path)?;
+        }
+
+        url = url.join("_search")?;
+
+        let mut builder = self.client.post(url);
+
+        if let Some(request_body) = body_params {
+            builder = builder.json(request_body);
+        }
+
+        let request = self.request_add_auth(builder).await?;
+
+        let res = self.client.execute(request).await?
+            .error_for_status()?
+            .text()
+            .await?;
+
+        Ok(serde_json::from_str::<OperationSearchResult>(&res)?)
     }
 
     pub async fn operation(&self, method_type: ElasticSearchMethodType, path: &str, body: Option<&serde_json:: Value>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
@@ -239,7 +273,10 @@ impl ElasticsearchClient {
 
         let request = self.request_add_auth(builder).await?;
 
-        let res = self.client.execute(request).await?.text().await?;
+        let res = self.client.execute(request).await?
+            .error_for_status()?
+            .text()
+            .await?;
 
         let json = serde_json::from_str(&res)?;
 

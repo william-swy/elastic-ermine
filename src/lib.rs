@@ -36,8 +36,7 @@ pub mod cli {
                 aws_region = Some(args[idx+1].to_owned());
                 idx += 2;
             } else {
-                println!("Unknown argument {}", args[idx]);
-                std::process::exit(1);
+                idx += 1;
             };
         }
 
