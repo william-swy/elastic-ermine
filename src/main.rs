@@ -561,11 +561,18 @@ impl MyApp {
                     .align_y(iced::Center),
                 ],
                 GenericSearchDisplaySectionValue::Result(res) => column![
-                    iced::widget::text(
-                        format!("{:?}", res)
+                    iced::widget::text(format!("Results")),
+                    iced::widget::text(format!("Number of hits: {}", res.hits.hits.len())),
+                    iced::widget::scrollable(
+                        column(
+                        res.hits.hits.iter().map(|item|
+                            iced::widget::text(
+                                serde_json::to_string_pretty(item).unwrap_or(format!("Failed to display {:?}", item))
+                            ).into()
+                        ))
                     )
-                    .align_x(iced::Center)
-                    .align_y(iced::Center),
+                    .width(iced::Fill)
+                    .height(iced::Fill)
                 ],
             }
             
