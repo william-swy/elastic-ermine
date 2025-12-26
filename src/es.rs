@@ -234,14 +234,11 @@ impl ElasticsearchClient {
      * for reference
      **/
     pub async fn search(&self, indicies: &Vec<String>, body_params: Option<&serde_json::Value>) -> Result<OperationSearchResult, Box<dyn std::error::Error>> {
-        let mut url = reqwest::Url::parse(&self.config.root_url)?;
+        let base_url = reqwest::Url::parse(&self.config.root_url)?;
 
-        if !indicies.is_empty() {
-            let index_path = indicies.join(",");
-            url = url.join(&index_path)?;
-        }
-
-        url = url.join("_search")?;
+        let url = base_url
+            .join((indicies.join(",") + "/").as_str())?
+            .join("_search")?;
 
         let mut builder = self.client.post(url);
 
