@@ -2,10 +2,14 @@ use elastic_ermine::{es,util};
 
 use iced::widget::{column, row};
 
+mod assets;
+mod view;
+
+
 fn main() -> iced::Result {
     let window = iced::window::Settings {
         icon: Some(iced::window::icon::from_file_data(
-            include_bytes!("../icons/logo.png"), 
+            assets::APP_ICON_BUFFER, 
             Some(image::ImageFormat::Png)).map_err(|err| {
                 iced::Error::WindowCreationFailed(Box::new(err))
             }
@@ -22,6 +26,7 @@ fn main() -> iced::Result {
 enum Message {
     // General type messages
     PageChanged(Page),
+    APIView(view::api::Message),
 
     // Connection related messages
     AuthSelected(AuthChoice),
@@ -71,6 +76,7 @@ enum AuthChoice {
 struct MyApp{
     // general state
     current_page: Page,
+    api_view: view::api::APIView,
 
     // auth related state
     cert_selection_open: bool,
@@ -118,6 +124,7 @@ enum TestConnectionButtonState {
 enum Page {
     #[default]
     Search,
+    API,
     Connection,
     Logs
 }
@@ -148,6 +155,7 @@ impl Default for MyApp {
     fn default() -> Self {
         Self { 
             current_page: Default::default(),
+            api_view: Default::default(),
 
             auth_choice_type: Some(AuthChoice::None), 
             auth_choice_basic: es::BasicAuth {
@@ -189,6 +197,10 @@ impl MyApp {
 
     fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
+            Message::APIView(_message) => {
+                // TODO
+                iced::Task::none()
+            },
             Message::AuthSelected(auth_choice) => {
                 self.auth_choice_type = Some(auth_choice);
                 iced::Task::none()
@@ -334,7 +346,7 @@ impl MyApp {
                 }
 
                 iced::Task::none()
-            },
+            }
         }
     }
 
@@ -383,13 +395,36 @@ impl MyApp {
     fn window_selector(&self) -> iced::widget::Container<'_, Message> {
         iced::widget::container(
             column![
-                iced::widget::button("Search")
-                    .on_press(Message::PageChanged(Page::Search)),
-                iced::widget::button("Connection")
-                    .on_press(Message::PageChanged(Page::Connection)),
-                iced::widget::button("Logs")
-                    .on_press(Message::PageChanged(Page::Logs)),
-            ].spacing(5)
+                iced::widget::tooltip(
+                    iced::widget::button(assets::search_icon().width(iced::Shrink))
+                        .on_press(Message::PageChanged(Page::Search))
+                        .padding(iced::Padding::from([10, 10])),
+                    "Search",
+                    iced::widget::tooltip::Position::Right
+                ).padding(10),
+                iced::widget::tooltip(
+                    iced::widget::button(assets::terminal_icon().width(iced::Shrink))
+                        .on_press(Message::PageChanged(Page::API))
+                        .padding(iced::Padding::from([10, 10])),
+                    "HTTP",
+                    iced::widget::tooltip::Position::Right
+                ),
+                iced::widget::tooltip(
+                    iced::widget::button(assets::settings_icon().width(iced::Shrink))
+                        .on_press(Message::PageChanged(Page::Connection))
+                        .padding(iced::Padding::from([10, 10])),
+                    "Settings",
+                    iced::widget::tooltip::Position::Right
+                ),
+                iced::widget::tooltip(
+                    iced::widget::button(assets::file_icon().width(iced::Shrink))
+                        .on_press(Message::PageChanged(Page::Logs))
+                        .padding(iced::Padding::from([10, 10])),
+                    "Logs",
+                    iced::widget::tooltip::Position::Right
+                )
+                
+            ]
         )
     }
 
@@ -399,11 +434,12 @@ impl MyApp {
                 Page::Search => self.search_section(),
                 Page::Connection => self.connection_config_section(),
                 Page::Logs => self.logs_section(),
+                Page::API => self.api_view.view().map(Message::APIView),
             }
         )
     }
 
-    fn connection_config_section(&self) -> iced::widget::Column<'_, Message> {
+    fn connection_config_section(&self) -> iced::Element<'_, Message> {
         column![
             iced::widget::text("Elasticsearch Connection"),
             iced::widget::text("Elasticsearch URL"),
@@ -463,7 +499,7 @@ impl MyApp {
                 iced::widget::text(format!("Failed to get certificate\n {}", x.reason))
             }),
             self.test_connection_button(),
-        ]
+        ].into()
     }
 
     fn test_connection_button(&self) -> iced::widget::Column<'_, Message> {
@@ -490,7 +526,7 @@ impl MyApp {
     }
 
 
-    fn search_section(&self) -> iced::widget::Column<'_, Message> {
+    fn search_section(&self) -> iced::Element<'_, Message> {
         column![
             self.search_options(),
             match self.search_type {
@@ -502,6 +538,7 @@ impl MyApp {
             .width(iced::Fill)
             .height(iced::Fill),
         ].spacing(10)
+        .into()
     }
 
     fn search_options(&self) -> iced::widget::Row<'_, Message> {
@@ -644,8 +681,8 @@ impl MyApp {
                         .into()))
     }
 
-    fn logs_section(&self) -> iced::widget::Column<'_, Message> {
-        column![iced::widget::text("Logs WIP")]
+    fn logs_section(&self) -> iced::Element<'_, Message> {
+        iced::widget::text("Logs WIP").into()
     }
 
     fn get_es_auth(&self) -> Option<es::Auth> {
