@@ -92,8 +92,7 @@ enum Page {
 enum SearchType {
     StringSearch,
     #[default]
-    GenericSearch,
-    EndpointOperations,
+    GenericSearch
 }
 
 #[derive(Debug, Default)]
@@ -347,7 +346,6 @@ impl MyApp {
             match self.search_type {
                 SearchType::StringSearch => self.search_string_search(),
                 SearchType::GenericSearch => self.generic_search_view(),
-                SearchType::EndpointOperations => self.search_endpoint_operations(),
             }
             .align_x(iced::alignment::Horizontal::Center)
             .width(iced::Fill)
@@ -362,8 +360,6 @@ impl MyApp {
                 .on_press(Message::SearchTypeChanged(SearchType::StringSearch)),
             iced::widget::button("Generic Search")
                 .on_press(Message::SearchTypeChanged(SearchType::GenericSearch)),
-            iced::widget::button("Endpoint Operations")
-                .on_press(Message::SearchTypeChanged(SearchType::EndpointOperations)),
         ]
     }
 
@@ -440,12 +436,6 @@ impl MyApp {
             .on_press_maybe(produced_message)
             .width(iced::Shrink)
             .height(iced::Shrink)
-    }
-
-    fn search_endpoint_operations(&self) -> iced::widget::Container<'_, Message> {
-        iced::widget::container(
-            iced::widget::text("Endpoint operations WIP")
-        )
     }
 
     fn search_filters(&self) -> iced::widget::Column<'_, Message> {
