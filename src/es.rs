@@ -9,7 +9,7 @@ pub enum Auth {
     AWS(AwsSigv4)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BasicAuth {
     pub username: String,
     pub password: Option<String>
