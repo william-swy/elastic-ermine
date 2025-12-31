@@ -1,7 +1,7 @@
 use aws_credential_types::provider::ProvideCredentials;
 use std::fmt::Write;
-pub mod types;
-use crate::es::types::OperationSearchResult;
+mod types;
+pub use crate::es::types::OperationSearchResult;
 
 #[derive(Debug)]
 pub enum Auth {
@@ -195,7 +195,12 @@ impl ElasticsearchClient {
         return Ok(request_builder.build()?);
     }
 
-    pub async fn get_indicies(&self) -> Result<Vec<ElasticSearchIndex>, Box<dyn std::error::Error>> {
+    // Result<Vec<ElasticSearchIndex>, Box<dyn std::error::Error>>
+
+    pub async fn get_indicies(&self) -> 
+    
+    
+    Result<Vec<ElasticSearchIndex>, Box<dyn std::error::Error>> {
         let base_url = reqwest::Url::parse(&self.config.root_url)?;
         let url = base_url.join("_cat/indices?expand_wildcards=open,closed&format=json")?;
 
