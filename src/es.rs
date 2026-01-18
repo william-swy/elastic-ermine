@@ -92,8 +92,32 @@ pub struct ElasticSearchAlias {
     pub index_ref: String,
 }
 
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub enum ElasticSearchMethodType {
+    #[default]
+    GET,
     POST,
+    PUT,
+    PATCH,
+    DELETE
+}
+
+impl std::fmt::Display for ElasticSearchMethodType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl ElasticSearchMethodType {
+    pub fn as_str(&self) -> &str {
+        match self  {
+            ElasticSearchMethodType::GET => "GET",
+            ElasticSearchMethodType::POST => "POST",
+            ElasticSearchMethodType::PUT => "PUT",
+            ElasticSearchMethodType::PATCH => "PATCH",
+            ElasticSearchMethodType::DELETE => "DELETE",
+        }
+    }
 }
 
 impl ElasticsearchClient {
@@ -197,10 +221,7 @@ impl ElasticsearchClient {
 
     // Result<Vec<ElasticSearchIndex>, Box<dyn std::error::Error>>
 
-    pub async fn get_indicies(&self) -> 
-    
-    
-    Result<Vec<ElasticSearchIndex>, Box<dyn std::error::Error>> {
+    pub async fn get_indicies(&self) -> Result<Vec<ElasticSearchIndex>, Box<dyn std::error::Error>> {
         let base_url = reqwest::Url::parse(&self.config.root_url)?;
         let url = base_url.join("_cat/indices?expand_wildcards=open,closed&format=json")?;
 
@@ -261,12 +282,16 @@ impl ElasticsearchClient {
         Ok(serde_json::from_str::<OperationSearchResult>(&res)?)
     }
 
-    pub async fn operation(&self, method_type: ElasticSearchMethodType, path: &str, body: Option<&serde_json:: Value>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    pub async fn operation(&self, method_type: ElasticSearchMethodType, path: &str, body: Option<&serde_json::Value>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
         let base_url = reqwest::Url::parse(&self.config.root_url)?;
         let url = base_url.join(path)?;
 
         let mut builder = match method_type {
             ElasticSearchMethodType::POST => self.client.post(url),
+            ElasticSearchMethodType::GET => self.client.get(url),
+            ElasticSearchMethodType::PUT => self.client.put(url),
+            ElasticSearchMethodType::PATCH => self.client.patch(url),
+            ElasticSearchMethodType::DELETE => self.client.delete(url),
         };
 
         if let Some(request_body) = body {

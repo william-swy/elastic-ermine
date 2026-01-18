@@ -12,6 +12,12 @@ static SEARCH_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(incl
 
 static TERMINAL_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(include_bytes!("../assets/terminal.svg")));
 
+static REFRESH_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(include_bytes!("../assets/refresh-cw.svg")));
+
+static LOADING_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(include_bytes!("../assets/loader.svg")));
+
+static APP_ICON: LazyLock<iced::widget::image::Handle> = LazyLock::new(|| iced::widget::image::Handle::from_bytes(APP_ICON_BUFFER));
+
 pub fn settings_icon() -> Svg<'static> {
     Svg::new(SETTINGS_ICON.clone())
 }
@@ -26,4 +32,16 @@ pub fn search_icon() -> Svg<'static> {
 
 pub fn terminal_icon() -> Svg<'static> {
     Svg::new(TERMINAL_ICON.clone())
+}
+
+pub fn refresh_icon() -> Svg<'static> {
+    Svg::new(REFRESH_ICON.clone())
+}
+
+pub fn loading_icon() -> Svg<'static> {
+    Svg::new(LOADING_ICON.clone())
+}
+
+pub fn app_icon() -> iced::widget::Image {
+    iced::widget::Image::new(APP_ICON.clone())
 }

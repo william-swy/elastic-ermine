@@ -67,9 +67,16 @@ impl MyApp {
                     } 
                 }
             }
-            Message::APIView(_message) => {
-                // TODO
-                iced::Task::none()
+            Message::APIView(message) => {
+                match self.api_view.update(message) {
+                    view::api::Action::None => iced::Task::none(),
+                    view::api::Action::InvokeOperation { method, path, body } => {
+                        let client_res = self.settings_view.get_client();
+                        view::api::View::try_invoke_es_operation_with_client(
+                            client_res, method, path, body
+                        ).map(Message::APIView)
+                    },
+                }                
             },
             Message::SettingsView(message) => {
                 match self.settings_view.update(message) {
@@ -116,14 +123,19 @@ impl MyApp {
 
     fn header(&self) -> iced::widget::Container<'_, Message> {
         iced::widget::container(
-            column![
-                iced::widget::text("Elastic Ermine")
-                    .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::default()})
-                    .size(30),
-                iced::widget::text("Search your data with Elasticsearch ... or Opensearch")
-                    .font(iced::Font { weight: iced::font::Weight::Light, ..iced::Font::default()})
-                    .size(14),
-            ].spacing(5)
+            row![
+                assets::app_icon()
+                .height(50)
+                .width(50),
+                column![
+                    iced::widget::text("Elastic Ermine")
+                        .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::default()})
+                        .size(30),
+                    iced::widget::text("Search your data with Elasticsearch ... or Opensearch")
+                        .font(iced::Font { weight: iced::font::Weight::Light, ..iced::Font::default()})
+                        .size(14),
+                ].spacing(5)
+            ].spacing(10)
         )
     }
 
