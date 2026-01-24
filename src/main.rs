@@ -153,7 +153,7 @@ impl MyApp {
                     iced::widget::button(assets::terminal_icon().width(iced::Shrink))
                         .on_press(Message::PageChanged(Page::API))
                         .padding(iced::Padding::from([10, 10])),
-                    "HTTP",
+                    "Dev Console",
                     iced::widget::tooltip::Position::Right
                 ),
                 iced::widget::tooltip(
