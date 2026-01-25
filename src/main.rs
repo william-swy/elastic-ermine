@@ -3,7 +3,7 @@ use elastic_ermine::{es,util};
 use iced::widget::{column, row};
 
 mod assets;
-mod dev_console;
+mod dev_tools;
 mod search;
 mod settings;
 
@@ -27,7 +27,7 @@ fn main() -> iced::Result {
 #[derive(Debug, Clone)]
 enum Message {
     PageChanged(Page),
-    DevConsoleView(dev_console::Message),
+    DevToolsView(dev_tools::Message),
     SettingsView(settings::Message),
     SearchView(search::Message),
 }
@@ -36,7 +36,7 @@ enum Message {
 struct MyApp{
     // general state
     current_page: Page,
-    dev_console_view: dev_console::View,
+    dev_tools_view: dev_tools::View,
     settings_view: settings::View,
     search_view: search::View,
 }
@@ -69,14 +69,14 @@ impl MyApp {
                     } 
                 }
             }
-            Message::DevConsoleView(message) => {
-                match self.dev_console_view.update(message) {
-                    dev_console::Action::None => iced::Task::none(),
-                    dev_console::Action::InvokeOperation { method, path, body } => {
+            Message::DevToolsView(message) => {
+                match self.dev_tools_view.update(message) {
+                    dev_tools::Action::None => iced::Task::none(),
+                    dev_tools::Action::InvokeOperation { method, path, body } => {
                         let client_res = self.settings_view.get_client();
-                        dev_console::View::try_invoke_es_operation_with_client(
+                        dev_tools::View::try_invoke_es_operation_with_client(
                             client_res, method, path, body
-                        ).map(Message::DevConsoleView)
+                        ).map(Message::DevToolsView)
                     },
                 }                
             },
@@ -183,7 +183,7 @@ impl MyApp {
                 Page::Search => self.search_view.view().map(Message::SearchView),
                 Page::Connection => self.settings_view.view().map(Message::SettingsView),
                 Page::Logs => self.logs_section(),
-                Page::DevConsole => self.dev_console_view.view().map(Message::DevConsoleView),
+                Page::DevConsole => self.dev_tools_view.view().map(Message::DevToolsView),
             }
         )
     }
