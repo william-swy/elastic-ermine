@@ -479,7 +479,8 @@ pub mod search {
         SelectedFiltersUpdated(FiltersUpdate),
         SearchPressed,
         SearchResultsReturned(Result<es::OperationSearchResult, String>),
-        GenericSearchBodyEditorActionPerformed(iced::widget::text_editor::Action)
+        GenericSearchBodyEditorActionPerformed(iced::widget::text_editor::Action),
+        QueryStringUpdated(String)
     }
 
     pub enum Action {
@@ -491,9 +492,14 @@ pub mod search {
         AllIndiciesAndAliases,
         GenericSearch{
             body: String,
-            indicies: Vec<String>,
+            indices: Vec<String>,
             aliases: Vec<String>,
         },
+        QueryStringSearch {
+            query_string: String,
+            indices: Vec<String>,
+            aliases: Vec<String>,
+        }
     }
 
     #[derive(Debug, Default)]
@@ -503,6 +509,8 @@ pub mod search {
         refresh_filter_errors: Option<String>,
         known_indicies_selected: std::collections::HashMap<String, bool>,
         known_aliases_selected: std::collections::HashMap<String, bool>,
+
+        query_string: String,
 
         generic_search_search_button_state: GenericSearchSearchButtonState,
         generic_search_display_content: GenericSearchDisplaySectionValue,
@@ -571,7 +579,7 @@ pub mod search {
                         Err((err, obtained_indicies, obtained_aliases)) => {
                             // TODO: rethink if these partially returned results should be option or just plain list.
                             // None could just be an empty list.
-                            
+            
                             self.known_indicies_selected = match obtained_indicies {
                                 Some(indicies) => 
                                     indicies.into_iter().map(|index| (index, false)).collect(),
@@ -614,15 +622,21 @@ pub mod search {
                 },
                 Message::SearchPressed => {
                     self.generic_search_search_button_state = GenericSearchSearchButtonState::Waiting;
-                    Action::TryClientInvoke(Context::GenericSearch { 
-                        body: self.generic_search_body_content.text(), 
-                        indicies: self.known_indicies_selected.iter()
+
+                    let indices = self.known_indicies_selected.iter()
                             .filter_map(|(index, selected)| selected.then_some(index.to_owned()))
-                            .collect(), 
-                        aliases: self.known_aliases_selected.iter()
+                            .collect::<Vec<String>>();
+
+                    let aliases = self.known_aliases_selected.iter()
                             .filter_map(|(alias, selected)| selected.then_some(alias.to_owned()))
-                            .collect() 
-                    })
+                            .collect::<Vec<String>>();
+
+                    Action::TryClientInvoke(
+                        match self.search_type {
+                            SearchType::StringSearch => Context::QueryStringSearch { query_string: self.query_string.clone(), indices, aliases },
+                            SearchType::GenericSearch => Context::GenericSearch { body: self.generic_search_body_content.text(), indices, aliases},
+                        }
+                    )
                 },
                 Message::SearchResultsReturned(operation_search_result) => {
                     self.generic_search_search_button_state = GenericSearchSearchButtonState::Ready;
@@ -640,6 +654,10 @@ pub mod search {
                     self.generic_search_body_content.perform(action);
                     Action::None
                 },
+                Message::QueryStringUpdated(query_string) => {
+                    self.query_string = query_string;
+                    Action::None
+                },
             }
         }
 
@@ -647,23 +665,42 @@ pub mod search {
         pub fn view(&self) -> iced::Element<'_, Message> {
             column![
                 self.choose_search_type_section(),
-                match self.search_type {
-                    SearchType::StringSearch => self.search_string_search(),
-                    SearchType::GenericSearch => self.generic_search_view(),
-                }
-                .align_x(iced::alignment::Horizontal::Center)
-                .width(iced::Fill)
-                .height(iced::Fill),
+                row![
+                    self.search_filters()
+                        .align_x(iced::alignment::Horizontal::Left)
+                        .width(iced::Shrink)
+                        .height(iced::Shrink),
+                    match self.search_type {
+                        SearchType::StringSearch => column![
+                            self.query_string_search_view(),
+                            self.generic_search_result_view() // perhaps make this scrollable
+                                .width(iced::Fill)
+                        ],
+                        SearchType::GenericSearch => column![
+                            self.generic_search_view()
+                                .height(iced::Length::FillPortion(2)),
+                            self.generic_search_result_view() // perhaps make this scrollable
+                                .width(iced::Fill)
+                                .height(iced::Length::FillPortion(1))
+                        ]
+                    }
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .width(iced::Fill)
+                    .height(iced::Fill),
+                ],
+                
             ].spacing(10)
             .into()
         }
 
         fn choose_search_type_section(&self) -> iced::widget::Row<'_, Message> {
             row![
-                iced::widget::button("String Search")
+                iced::widget::button("Query String")
                     .on_press(Message::SearchTypeChanged(SearchType::StringSearch)),
-                iced::widget::button("Generic Search")
+                iced::widget::button("Generic")
                     .on_press(Message::SearchTypeChanged(SearchType::GenericSearch)),
+                iced::widget::space::horizontal(),
+                self.generic_search_search_button()
             ]
         }
 
@@ -715,31 +752,23 @@ pub mod search {
                             .into()))
         }
 
-        fn search_string_search(&self) -> iced::widget::Container<'_, Message> {
+        fn query_string_search_view(&self) -> iced::widget::Container<'_, Message> {
             iced::widget::container(
-                iced::widget::text("String Search WIP")
+                iced::widget::text_input("title:(quick OR brown)", &self.query_string)
+                    .on_input(Message::QueryStringUpdated)
             )
         }
 
         fn generic_search_view(&self) -> iced::widget::Container<'_, Message> {
             iced::widget::container(
-                row![
-                    self.search_filters()
-                        .align_x(iced::alignment::Horizontal::Left)
-                        .width(iced::Shrink)
-                        .height(iced::Shrink),
-                    column![
-                        iced::widget::text_editor(&self.generic_search_body_content) // perhaps make this scrollable
-                            .on_action(Message::GenericSearchBodyEditorActionPerformed)
-                            .height(iced::Length::FillPortion(3)),
-                        self.generic_search_search_button(),
-                        self.generic_search_result_view() // perhaps make this scrollable
-                            .width(iced::Fill)
-                            .height(iced::Length::FillPortion(2))
-                    ]
-                    .width(iced::Fill)
-                    .height(iced::Fill)
+                column![
+                    iced::widget::text_editor(&self.generic_search_body_content) // perhaps make this scrollable
+                        .on_action(Message::GenericSearchBodyEditorActionPerformed)
+                        .height(iced::Length::Fill)
+                        // .height(iced::Length::FillPortion(3))
                 ]
+                .width(iced::Fill)
+                .height(iced::Fill)
             )
         }
 
@@ -779,6 +808,7 @@ pub mod search {
             )
         }
 
+        // TODO: rename as search button. Should also submit query based on the search mode
         fn generic_search_search_button(&self) -> iced::widget::Button<'_, Message> {
             let produced_message = match self.generic_search_search_button_state {
                 GenericSearchSearchButtonState::Ready => Some(Message::SearchPressed),
@@ -799,10 +829,12 @@ pub mod search {
                         Self::get_all_indicies_and_aliases(client_res),
                         Message::FilterRefreshResultsReturned
                 ),
-                Context::GenericSearch { body, indicies, aliases } => iced::Task::perform(
-                    Self::generic_search(client_res, body, indicies, aliases),
+                Context::GenericSearch { body, indices, aliases } => iced::Task::perform(
+                    Self::generic_search(client_res, body, indices, aliases),
                     Message::SearchResultsReturned
                 ),
+                Context::QueryStringSearch { query_string, indices, aliases } => iced::Task::perform(
+                    Self::query_string_search(client_res, query_string, indices, aliases), Message::SearchResultsReturned),
             }
         }
 
@@ -851,7 +883,7 @@ pub mod search {
         async fn generic_search(
             client_res: Result<es::ElasticsearchClient, String>,
             body: String,
-            mut indicies: Vec<String>,
+            mut indices: Vec<String>,
             mut aliases: Vec<String>
         ) -> Result<es::OperationSearchResult, String> {
             let client = client_res?;
@@ -862,10 +894,23 @@ pub mod search {
             .transpose()
             .map_err(|err| err.to_string())?;
 
-            indicies.append(&mut aliases);
+            indices.append(&mut aliases);
 
-            client.search(&indicies, search_body.as_ref()).await
+            client.search(&indices, search_body.as_ref()).await
                 .map_err(|err| err.to_string())
         }
+
+        async fn query_string_search(
+            client_res: Result<es::ElasticsearchClient, String>,
+            query_string: String,
+            mut indices: Vec<String>,
+            mut aliases: Vec<String>
+        ) -> Result<es::OperationSearchResult, String> {
+            let client = client_res?;
+            indices.append(&mut aliases);
+            client.query_string(&indices, query_string).await
+                .map_err(|err| err.to_string())
+        }
+
     }
 }

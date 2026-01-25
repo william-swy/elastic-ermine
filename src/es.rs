@@ -257,7 +257,9 @@ impl ElasticsearchClient {
      * Indicies can also include alias names. 
      * indicies as an empty list implies all indicies
      * See https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-search#operation-search-index
-     * for reference
+     * for reference.
+     * For body params, anything listed https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-search#operation-search-body-application-json
+     * is valid.
      **/
     pub async fn search(&self, indicies: &Vec<String>, body_params: Option<&serde_json::Value>) -> Result<OperationSearchResult, Box<dyn std::error::Error>> {
         let base_url = reqwest::Url::parse(&self.config.root_url)?;
@@ -280,6 +282,21 @@ impl ElasticsearchClient {
             .await?;
 
         Ok(serde_json::from_str::<OperationSearchResult>(&res)?)
+    }
+
+    /**
+     * See https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query
+     */
+    pub async fn query_string(&self, indicies: &Vec<String>, query: String) -> Result<OperationSearchResult, Box<dyn std::error::Error>> {
+        let body = serde_json::json!({
+            "query": {
+                "query_string": {
+                    "query": query,
+                }
+            }
+        });
+
+        self.search(indicies, Some(&body)).await
     }
 
     pub async fn operation(&self, method_type: ElasticSearchMethodType, path: &str, body: Option<&serde_json::Value>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
