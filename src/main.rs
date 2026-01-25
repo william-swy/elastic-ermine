@@ -3,7 +3,9 @@ use elastic_ermine::{es,util};
 use iced::widget::{column, row};
 
 mod assets;
-mod view;
+mod dev_console;
+mod search;
+mod settings;
 
 
 fn main() -> iced::Result {
@@ -25,25 +27,25 @@ fn main() -> iced::Result {
 #[derive(Debug, Clone)]
 enum Message {
     PageChanged(Page),
-    APIView(view::api::Message),
-    SettingsView(view::settings::Message),
-    SearchView(view::search::Message),
+    DevConsoleView(dev_console::Message),
+    SettingsView(settings::Message),
+    SearchView(search::Message),
 }
 
 #[derive(Debug, Default)]
 struct MyApp{
     // general state
     current_page: Page,
-    api_view: view::api::View,
-    settings_view: view::settings::View,
-    search_view: view::search::View,
+    dev_console_view: dev_console::View,
+    settings_view: settings::View,
+    search_view: search::View,
 }
 
 #[derive(Debug, Default, Clone)]
 enum Page {
     #[default]
     Search,
-    API,
+    DevConsole,
     Connection,
     Logs
 }
@@ -60,28 +62,28 @@ impl MyApp {
         match message {
             Message::SearchView(message) => {
                 match self.search_view.update(message) {
-                    view::search::Action::None => iced::Task::none(),
-                    view::search::Action::TryClientInvoke(context) => {
+                    search::Action::None => iced::Task::none(),
+                    search::Action::TryClientInvoke(context) => {
                         let client_res = self.settings_view.get_client();
-                        view::search::View::try_invoke_with_client(client_res, context).map(Message::SearchView)
+                        search::View::try_invoke_with_client(client_res, context).map(Message::SearchView)
                     } 
                 }
             }
-            Message::APIView(message) => {
-                match self.api_view.update(message) {
-                    view::api::Action::None => iced::Task::none(),
-                    view::api::Action::InvokeOperation { method, path, body } => {
+            Message::DevConsoleView(message) => {
+                match self.dev_console_view.update(message) {
+                    dev_console::Action::None => iced::Task::none(),
+                    dev_console::Action::InvokeOperation { method, path, body } => {
                         let client_res = self.settings_view.get_client();
-                        view::api::View::try_invoke_es_operation_with_client(
+                        dev_console::View::try_invoke_es_operation_with_client(
                             client_res, method, path, body
-                        ).map(Message::APIView)
+                        ).map(Message::DevConsoleView)
                     },
                 }                
             },
             Message::SettingsView(message) => {
                 match self.settings_view.update(message) {
-                    view::settings::Action::Run(task) => task.map(Message::SettingsView),
-                    view::settings::Action::None => iced::Task::none(),
+                    settings::Action::Run(task) => task.map(Message::SettingsView),
+                    settings::Action::None => iced::Task::none(),
                 }
             },
             Message::PageChanged(page) => {
@@ -151,7 +153,7 @@ impl MyApp {
                 ).padding(10),
                 iced::widget::tooltip(
                     iced::widget::button(assets::terminal_icon().width(iced::Shrink))
-                        .on_press(Message::PageChanged(Page::API))
+                        .on_press(Message::PageChanged(Page::DevConsole))
                         .padding(iced::Padding::from([10, 10])),
                     "Dev Console",
                     iced::widget::tooltip::Position::Right
@@ -181,7 +183,7 @@ impl MyApp {
                 Page::Search => self.search_view.view().map(Message::SearchView),
                 Page::Connection => self.settings_view.view().map(Message::SettingsView),
                 Page::Logs => self.logs_section(),
-                Page::API => self.api_view.view().map(Message::APIView),
+                Page::DevConsole => self.dev_console_view.view().map(Message::DevConsoleView),
             }
         )
     }
