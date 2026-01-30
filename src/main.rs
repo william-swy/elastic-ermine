@@ -3,6 +3,7 @@ use elastic_ermine::{es,util};
 use iced::widget::{column, row};
 
 mod assets;
+mod widget;
 mod dev_tools;
 mod search;
 mod settings;

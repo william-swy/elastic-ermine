@@ -1,4 +1,4 @@
-use crate::{es, util};
+use crate::{widget, es, util};
 use iced::widget::{column, row};
 
 #[derive(Debug, Clone)]
@@ -30,6 +30,7 @@ pub struct View {
     selected_cert: Result<Option<(std::path::PathBuf, reqwest::Certificate)>, String>,
     cert_selection_open: bool, // can be agregatted with selected_cert via an enum
     test_connection_button_state: TestConnectionButtonState,
+    test_connection_result: Option<Result<(), String>>,
 }
 
 impl Default for View {
@@ -45,6 +46,7 @@ impl Default for View {
             selected_cert: Ok(None),
             cert_selection_open: false,
             test_connection_button_state: Default::default(),
+            test_connection_result: None,
         }
     }
 }
@@ -60,9 +62,8 @@ pub enum AuthChoice {
 #[derive(Debug, Default)]
 enum TestConnectionButtonState {
     #[default]
-    NotClicked,
+    Ready,
     Waiting,
-    Result(Result<(), String>)
 }
 
 impl View {
@@ -125,13 +126,15 @@ impl View {
                         Action::Run(Self::test_connection(client))
                     },
                     Err(reason) => {
-                        self.test_connection_button_state = TestConnectionButtonState::Result(Err(reason));
+                        self.test_connection_button_state = TestConnectionButtonState::Ready;
+                        self.test_connection_result = Some(Err(reason));
                         Action::None
                     },
                 }
             },
             Message::TestConnectionButtonResultReturned(res) => {
-                self.test_connection_button_state = TestConnectionButtonState::Result(res);
+                self.test_connection_button_state = TestConnectionButtonState::Ready;
+                self.test_connection_result = Some(res);
                 Action::None
             },
         }
@@ -139,93 +142,165 @@ impl View {
 
     #[must_use]
     pub fn view(&self) -> iced::Element<'_, Message> {
-        column![
-            iced::widget::text("Elasticsearch Connection"),
-            iced::widget::text("Elasticsearch URL"),
-            iced::widget::text_input("https://elasticsearch.example.com:9200", &self.es_url)
-                .on_input(Message::UrlChanged),
-            self.es_url.is_empty().then_some(
-                iced::widget::text("Elasticsearch URL is required")
-            ),
-            (!self.es_url.is_empty() && !util::valid_url(&self.es_url)).then_some(
-                iced::widget::text("Invalid URL format")
-            ),
-            iced::widget::text("Authentication Method"),
-            row![
-                iced::widget::radio("Basic Auth", AuthChoice::Basic, self.auth_choice_type, Message::AuthChoiceSelected),
-                iced::widget::radio("AWS SigV4", AuthChoice::AWSSigV4, self.auth_choice_type, Message::AuthChoiceSelected),
-                iced::widget::radio("None", AuthChoice::None, self.auth_choice_type, Message::AuthChoiceSelected)
-            ],
-            self.auth_choice_type.map(|choice| {
-                match choice {
-                    AuthChoice::Basic => Some(column![
-                        iced::widget::text("Username"),
-                        iced::widget::text_input("username", &self.basic_auth_data.username)
-                            .on_input(Message::BasicAuthUsernameChanged),
-                        iced::widget::text("Password (Optional)"),
-                        iced::widget::text_input(
-                                "password", 
-                                self.basic_auth_data.password.as_ref().map(String::as_str).unwrap_or("")
-                            )
-                            .on_input(Message::BasicAuthPasswordChanged),
-                    ]),
-                    AuthChoice::AWSSigV4 => Some(column![
-                        iced::widget::text("AWS Region"),
-                        iced::widget::text_input("us-east-1", &self.aws_sigv4_data.region)
-                            .on_input(Message::AwsAuthRegionChanged),
-                        iced::widget::text("AWS Profile"),
-                        iced::widget::text_input(
-                                "default", 
-                                self.aws_sigv4_data.profile.as_ref().map(String::as_str).unwrap_or("")
-                            )
-                            .on_input(Message::AwsAuthProfileChanged)
-                    ]),
-                    AuthChoice::None => None,
-                }
-            }).flatten(),
-            iced::widget::text("CA certificate file (optional)"),
-            self.selected_cert.as_ref().ok().and_then(Option::as_ref)
-                .map(|(cert_path, _)| {
-                    row![
-                        iced::widget::text(
-                            cert_path.file_name()
-                                .expect("Unable to get file name of cert")
-                                .to_string_lossy()
-                        ),
-                        iced::widget::button(iced::widget::text("x"))
-                            .on_press(Message::CertRemoved)
-                    ]
-                })
-                .unwrap_or(
-                    row![iced::widget::button("Upload Certificate (.pem or .der)")
-                            .on_press_maybe((!self.cert_selection_open).then(|| Message::CertSelectionClicked))]
-                ),
-            self.selected_cert.as_ref().err().map(|reason| {
-                iced::widget::text(format!("Failed to get certificate\n {}", reason))
-            }),
-            self.test_connection_button(),
-        ].into()
+        iced::widget::container(
+            column![
+                iced::widget::text("Cluster Connection"),
+                self.general_info_section(),
+                self.authentication_section(),
+                self.advanced_section(),
+                self.test_connection_section(),
+            ]
+            .spacing(20)
+        )
+        .padding([20, 40])
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::Top)
+        .into()
+        
     }
 
-    fn test_connection_button(&self) -> iced::widget::Column<'_, Message> {
-        match &self.test_connection_button_state {
-            TestConnectionButtonState::NotClicked => column![
-                iced::widget::button("Test connection")
-                    .on_press(Message::TestConnectionButtonPressed)
-            ],
-            TestConnectionButtonState::Waiting => column![
-                    iced::widget::button("Test connection\t waiting...")
-            ],
-            TestConnectionButtonState::Result(res) => column![
-                iced::widget::button("Test connection")
-                    .on_press(Message::TestConnectionButtonPressed),
-                res.as_ref().map(|_| {
-                    iced::widget::text("Connection successful")
-                }).unwrap_or_else(|reason| {
-                    iced::widget::text(format!("Connection failed\n{}", reason))
+    fn general_info_section(&self) -> iced::widget::Container<'_, Message> {
+        Self::section(
+            iced::widget::text("General").into(), 
+            column![
+                        iced::widget::text("Elasticsearch URL"),
+                        iced::widget::text_input("https://elasticsearch.example.com:9200", &self.es_url)
+                            .on_input(Message::UrlChanged),
+                        self.es_url.is_empty().then_some(
+                            iced::widget::text("Elasticsearch URL is required")
+                        ),
+                        (!self.es_url.is_empty() && !util::valid_url(&self.es_url)).then_some(
+                            iced::widget::text("Invalid URL format")
+                        )
+                ].into()
+        )
+    }
+
+    fn authentication_section(&self) -> iced::widget::Container<'_, Message> {
+        Self::section(
+            iced::widget::text("Authentication").into(), 
+            iced::widget::column![
+                row![
+                    widget::RadioArea::new("Basic Auth", AuthChoice::Basic, self.auth_choice_type, Message::AuthChoiceSelected)
+                        .width(iced::FillPortion(1)),
+                    widget::RadioArea::new("AWS SigV4", AuthChoice::AWSSigV4, self.auth_choice_type, Message::AuthChoiceSelected)
+                        .width(iced::FillPortion(1)),
+                    widget::RadioArea::new("No Auth", AuthChoice::None, self.auth_choice_type, Message::AuthChoiceSelected)
+                        .width(iced::FillPortion(1)),
+                ].width(iced::Fill).spacing(10),
+                self.auth_choice_type.map(|choice| {
+                    match choice {
+                        AuthChoice::Basic => Some(column![
+                            iced::widget::text("Username"),
+                            iced::widget::text_input("username", &self.basic_auth_data.username)
+                                .on_input(Message::BasicAuthUsernameChanged),
+                            iced::widget::text("Password (Optional)"),
+                            iced::widget::text_input(
+                                    "password", 
+                                    self.basic_auth_data.password.as_ref().map(String::as_str).unwrap_or("")
+                                )
+                                .on_input(Message::BasicAuthPasswordChanged),
+                        ]),
+                        AuthChoice::AWSSigV4 => Some(column![
+                            iced::widget::text("AWS Region"),
+                            iced::widget::text_input("us-east-1", &self.aws_sigv4_data.region)
+                                .on_input(Message::AwsAuthRegionChanged),
+                            iced::widget::text("AWS Profile"),
+                            iced::widget::text_input(
+                                    "default", 
+                                    self.aws_sigv4_data.profile.as_ref().map(String::as_str).unwrap_or("")
+                                )
+                                .on_input(Message::AwsAuthProfileChanged)
+                        ]),
+                        AuthChoice::None => None,
+                    }
+                }).flatten()
+            ].into()
+        )
+    }
+
+    fn advanced_section(&self) -> iced::widget::Container<'_, Message> {
+        Self::section(
+            iced::widget::text("Advanced Settings").into(), 
+            iced::widget::column![
+                iced::widget::text("CA certificate file (optional)"),
+                self.selected_cert.as_ref().ok().and_then(Option::as_ref)
+                    .map(|(cert_path, _)| {
+                        row![
+                            iced::widget::text(
+                                cert_path.file_name()
+                                    .expect("Unable to get file name of cert")
+                                    .to_string_lossy()
+                            ),
+                            iced::widget::button(iced::widget::text("x"))
+                                .on_press(Message::CertRemoved)
+                        ]
+                    })
+                    .unwrap_or(
+                        row![iced::widget::button("Upload Certificate (.pem or .der)")
+                                .on_press_maybe((!self.cert_selection_open).then(|| Message::CertSelectionClicked))]
+                    ),
+                self.selected_cert.as_ref().err().map(|reason| {
+                    iced::widget::text(format!("Failed to get certificate\n {}", reason))
                 })
-            ],
-        }
+            ].into())
+    }
+
+    fn section<'a>(header: iced::Element<'a, Message>, body: iced::Element<'a, Message>) -> iced::widget::Container<'a, Message> {
+        iced::widget::container(
+            iced::widget::column![
+                iced::widget::container(
+                    header
+                ).padding(10),
+                iced::widget::rule::horizontal(1),
+                iced::widget::container(
+                    body
+                ).padding(10)
+            ]
+        ).style(iced::widget::container::bordered_box)
+    }
+
+    
+    fn test_connection_section(&self) -> iced::widget::Column<'_, Message> {
+        iced::widget::column![
+            match &self.test_connection_button_state {
+                TestConnectionButtonState::Ready => 
+                    iced::widget::button("Test connection")
+                        .on_press(Message::TestConnectionButtonPressed),
+                TestConnectionButtonState::Waiting =>
+                        iced::widget::button("Test connection\t waiting...")
+            },
+            // TODO: refactor using `section`` function. Also modify `section` function to accept more params
+            self.test_connection_result.as_ref().map(|res| {
+                match res {
+                    Ok(_) => iced::widget::container(
+                        iced::widget::column![
+                            iced::widget::text("Connection Successful"),
+                            iced::widget::text("Successfully pinged instance")
+                        ]
+                        .spacing(5)
+                    ).style(|t| {
+                        let success = iced::widget::container::success(t);
+                        let border = success.border.rounded(5.0);
+                        success.border(border)
+                    }),
+                    Err(msg) => iced::widget::container(
+                        iced::widget::column![
+                            iced::widget::text("Connection Failed"),
+                            iced::widget::text(msg)
+                        ]
+                        .spacing(5)
+                    ).style(|t| {
+                        let danger = iced::widget::container::danger(t);
+                        let border = danger.border.rounded(5.0);
+                        danger.border(border)
+                    }),
+                }
+                .width(iced::Fill)
+                .padding(10)
+            })
+        ]
+        .spacing(15)
     }
 
     pub fn get_client(&self) -> Result<es::ElasticsearchClient, String> {
