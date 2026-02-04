@@ -1,4 +1,4 @@
-use crate::{widget, es, util};
+use crate::{assets, widget, es, util};
 use iced::widget::{column, row};
 
 #[derive(Debug, Clone)]
@@ -268,7 +268,11 @@ impl View {
                     iced::widget::button("Test connection")
                         .on_press(Message::TestConnectionButtonPressed),
                 TestConnectionButtonState::Waiting =>
-                        iced::widget::button("Test connection\t waiting...")
+                        iced::widget::button(
+                            iced::widget::row![
+                                assets::loading_icon().width(iced::Shrink),
+                                "Test connection"
+                            ])
             },
             // TODO: refactor using `section`` function. Also modify `section` function to accept more params
             self.test_connection_result.as_ref().map(|res| {
