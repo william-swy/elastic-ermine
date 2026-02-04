@@ -205,7 +205,7 @@ impl View {
             row![
                 self.search_filters()
                     .align_x(iced::alignment::Horizontal::Left)
-                    .width(iced::Shrink)
+                    .width(iced::FillPortion(1))
                     .height(iced::Shrink),
                 match self.search_type {
                     SearchType::StringSearch => column![
@@ -222,10 +222,10 @@ impl View {
                     ]
                 }
                 .align_x(iced::alignment::Horizontal::Center)
-                .width(iced::Fill)
+                .width(iced::FillPortion(4))
                 .height(iced::Fill),
-            ],
-            
+            ]
+            .spacing(10),
         ].spacing(10)
         .into()
     }
@@ -241,10 +241,11 @@ impl View {
         ]
     }
 
-    fn search_filters(&self) -> iced::widget::Column<'_, Message> {
+    fn search_filters(&self) -> iced::widget::Container<'_, Message> {
         let filters = column![
             row![
                 iced::widget::text("Filters"),
+                iced::widget::space::horizontal(),
                 match self.refresh_filter_button_state {
                     RefreshFilterButtonState::Ready => iced::widget::button("Refresh")
                         .on_press(Message::FilterRefreshPressed),
@@ -273,7 +274,7 @@ impl View {
 
         let filters = filters.push(iced::widget::text("Aliases"));
 
-        filters.extend(
+        let filters = filters.extend(
             self.known_aliases_selected
                 .iter()
                 .map(|(alias, selected)|
@@ -286,7 +287,11 @@ impl View {
                                 Message::SelectedFiltersUpdated(FiltersUpdate::RemoveAlias(alias.to_owned()))
                             }
                         })
-                        .into()))
+                        .into()));
+
+        iced::widget::container(filters)
+            .style(iced::widget::container::bordered_box)
+            .padding(10)
     }
 
     fn query_string_search_view(&self) -> iced::widget::Container<'_, Message> {
