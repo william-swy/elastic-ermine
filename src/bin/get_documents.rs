@@ -39,7 +39,7 @@ fn main() {
         es::ElasticSearchMethodType::POST, 
         "/*/_search", Some(&body))) {
         Ok(res) => {
-            println!("Get document result\n {}", res);
+            println!("Get document result\n {:?}", res);
         },
         Err(err) => {
             println!("Get documents failed: {}", err);

@@ -1,4 +1,4 @@
-use crate::es;
+use crate::{assets, es};
 use iced::widget::{column, row};
 
 pub enum Action {
@@ -15,7 +15,7 @@ pub enum Message {
     RequestTypeSelected(es::ElasticSearchMethodType),
     RequestBodyEditPerformed(iced::widget::text_editor::Action),
     PathUpdated(String),
-    HTTPOperationReturned(Result<serde_json::Value, String>), // Perhaps Value should be a reference for large results
+    HTTPOperationReturned(Result<es::OperationResult, String>), // Perhaps Value should be a reference for large results
     SendButtonPressed,
 }
 
@@ -24,7 +24,7 @@ pub struct View {
     request_type: es::ElasticSearchMethodType,
     request_path: String,
     request_body: iced::widget::text_editor::Content,
-    result: Option<Result<serde_json::Value, String>>,
+    result: Option<Result<es::OperationResult, String>>,
 
     send_button_state: SendButtonState,
 }
@@ -102,18 +102,31 @@ impl View {
                 iced::widget::text_input("_search", &self.request_path)
                     .on_input(Message::PathUpdated)
                     .width(iced::Fill),
-                iced::widget::button("Send")
-                    .on_press(Message::SendButtonPressed)
-                    .width(iced::Shrink)
+                match self.send_button_state {
+                    SendButtonState::Ready => 
+                        iced::widget::button("Send")
+                            .on_press(Message::SendButtonPressed),
+                    SendButtonState::Waiting => 
+                        iced::widget::button(
+                            iced::widget::row![
+                                assets::loading_icon().width(iced::Shrink),
+                                "Send"
+                            ]
+                        ),
+                }
+                .width(iced::Shrink),
             ],
             row![
                 iced::widget::text("REQUEST BODY (JSON)"),
                 iced::widget::space::horizontal(),
                 iced::widget::button("Format"),
-            ],
+                iced::widget::button("Clear")
+            ]
+            .spacing(5),
             iced::widget::text_editor(&self.request_body)
                 .on_action(Message::RequestBodyEditPerformed)
-                .height(iced::Length::FillPortion(3)),
+                .height(iced::Length::Fill)
+                .placeholder(r#"{"size":10000,"query":{"match_all":{}}}"#),
         ]
     }
 
@@ -122,11 +135,13 @@ impl View {
             iced::widget::text("Results"),
             self.result.as_ref().map(|res| {
                 match res {
-                    Ok(val) => iced::widget::text(
-                        serde_json::to_string_pretty(val).unwrap_or_else(|err| 
-                            format!("{} Failed to deserialize {:?}", err, val)
-                        )
-                    ),
+                    Ok(val) => match val {
+                        es::OperationResult::Json(json_val) => 
+                            iced::widget::text(
+                                serde_json::to_string_pretty(json_val)
+                                    .unwrap_or_else(|err| format!("{} Failed to deserialize {:?}", err, val))),
+                        es::OperationResult::Text(text_val) => iced::widget::text(text_val),
+                    },
                     Err(msg) => iced::widget::text(msg),
                 }
             })

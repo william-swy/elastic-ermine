@@ -1,7 +1,7 @@
 use aws_credential_types::provider::ProvideCredentials;
 use std::fmt::Write;
 mod types;
-pub use crate::es::types::OperationSearchResult;
+pub use crate::es::types::*;
 
 #[derive(Debug)]
 pub enum Auth {
@@ -299,7 +299,13 @@ impl ElasticsearchClient {
         self.search(indicies, Some(&body)).await
     }
 
-    pub async fn operation(&self, method_type: ElasticSearchMethodType, path: &str, body: Option<&serde_json::Value>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    pub async fn operation(
+        &self, 
+        method_type: ElasticSearchMethodType, 
+        path: &str, 
+        body: Option<&serde_json::Value>
+    ) -> Result<OperationResult, Box<dyn std::error::Error>> 
+    {
         let base_url = reqwest::Url::parse(&self.config.root_url)?;
         let url = base_url.join(path)?;
 
@@ -322,9 +328,14 @@ impl ElasticsearchClient {
             .text()
             .await?;
 
-        let json = serde_json::from_str(&res)?;
-
-        return Ok(json);
+        Ok(serde_json::from_str::<serde_json::Value>(&res).map_or_else(
+            |_err| {
+                OperationResult::Text(res)
+            },
+            |json_val| {
+                OperationResult::Json(json_val)
+            }
+        ))
     }
 
     async fn sign_request_sigv4(request: &mut reqwest::Request, config: &AwsSigv4) -> Result<(), Box<dyn std::error::Error>> {

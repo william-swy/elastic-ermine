@@ -23,3 +23,9 @@ pub struct OperationSearchShardsUsed {
 pub struct OperationSearchHits {
     pub hits: Vec<serde_json::Value>,
 }
+
+#[derive(Debug, Clone)]
+pub enum OperationResult {
+    Json(serde_json::Value),
+    Text(String),
+}
