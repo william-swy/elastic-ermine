@@ -133,18 +133,21 @@ impl View {
     pub fn response(&self) -> iced::Element<'_, Message> {
         column![
             iced::widget::text("Results"),
-            self.result.as_ref().map(|res| {
-                match res {
-                    Ok(val) => match val {
-                        es::OperationResult::Json(json_val) => 
-                            iced::widget::text(
-                                serde_json::to_string_pretty(json_val)
-                                    .unwrap_or_else(|err| format!("{} Failed to deserialize {:?}", err, val))),
-                        es::OperationResult::Text(text_val) => iced::widget::text(text_val),
-                    },
-                    Err(msg) => iced::widget::text(msg),
-                }
-            })
+            iced::widget::scrollable(
+                self.result.as_ref().map(|res| {
+                    match res {
+                        Ok(val) => match val {
+                            es::OperationResult::Json(json_val) => 
+                                iced_selection::text(
+                                    serde_json::to_string_pretty(json_val)
+                                        .unwrap_or_else(|err| format!("{} Failed to deserialize {:?}", err, val))),
+                            es::OperationResult::Text(text_val) => iced_selection::text(text_val),
+                        },
+                        Err(msg) => iced_selection::text(msg),
+                    }
+                })
+            )
+            .width(iced::Fill)
         ].into()
     }
 
