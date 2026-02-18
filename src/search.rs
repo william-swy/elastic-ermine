@@ -210,13 +210,13 @@ impl View {
                 match self.search_type {
                     SearchType::StringSearch => column![
                         self.query_string_search_view(),
-                        self.generic_search_result_view() // perhaps make this scrollable
+                        self.generic_search_result_view()
                             .width(iced::Fill)
                     ],
                     SearchType::GenericSearch => column![
                         self.generic_search_view()
                             .height(iced::Length::FillPortion(2)),
-                        self.generic_search_result_view() // perhaps make this scrollable
+                        self.generic_search_result_view()
                             .width(iced::Fill)
                             .height(iced::Length::FillPortion(1))
                     ]
@@ -325,7 +325,7 @@ impl View {
                     .align_y(iced::Center),
                 ],
                 GenericSearchDisplaySectionValue::Error(err) => column![
-                    iced::widget::text(
+                    iced_selection::text(
                         format!("ERROR\nSearch failed: {}", err)
                     )
                     .align_x(iced::Center)
@@ -337,7 +337,7 @@ impl View {
                     iced::widget::scrollable(
                         column(
                         res.hits.hits.iter().map(|item|
-                            iced::widget::text(
+                            iced_selection::text(
                                 serde_json::to_string_pretty(item).unwrap_or(format!("Failed to display {:?}", item))
                             ).into()
                         ))
