@@ -160,8 +160,8 @@ impl View {
     }
 
     fn general_info_section(&self) -> iced::widget::Container<'_, Message> {
-        Self::section(
-            iced::widget::text("General").into(), 
+        widget::section_with_header(
+            iced::widget::text("General"), 
             column![
                         iced::widget::text("Elasticsearch URL"),
                         iced::widget::text_input("https://elasticsearch.example.com:9200", &self.es_url)
@@ -172,13 +172,13 @@ impl View {
                         (!self.es_url.is_empty() && !util::valid_url(&self.es_url)).then_some(
                             iced::widget::text("Invalid URL format")
                         )
-                ].into()
+                ]
         )
     }
 
     fn authentication_section(&self) -> iced::widget::Container<'_, Message> {
-        Self::section(
-            iced::widget::text("Authentication").into(), 
+        widget::section_with_header(
+            iced::widget::text("Authentication"), 
             iced::widget::column![
                 row![
                     widget::RadioArea::new("Basic Auth", AuthChoice::Basic, self.auth_choice_type, Message::AuthChoiceSelected)
@@ -215,13 +215,13 @@ impl View {
                         AuthChoice::None => None,
                     }
                 }).flatten()
-            ].into()
+            ]
         )
     }
 
     fn advanced_section(&self) -> iced::widget::Container<'_, Message> {
-        Self::section(
-            iced::widget::text("Advanced Settings").into(), 
+        widget::section_with_header(
+            iced::widget::text("Advanced Settings"), 
             iced::widget::column![
                 iced::widget::text("CA certificate file (optional)"),
                 self.selected_cert.as_ref().ok().and_then(Option::as_ref)
@@ -243,22 +243,10 @@ impl View {
                 self.selected_cert.as_ref().err().map(|reason| {
                     iced::widget::text(format!("Failed to get certificate\n {}", reason))
                 })
-            ].into())
+            ])
     }
 
-    fn section<'a>(header: iced::Element<'a, Message>, body: iced::Element<'a, Message>) -> iced::widget::Container<'a, Message> {
-        iced::widget::container(
-            iced::widget::column![
-                iced::widget::container(
-                    header
-                ).padding(10),
-                iced::widget::rule::horizontal(1),
-                iced::widget::container(
-                    body
-                ).padding(10)
-            ]
-        ).style(iced::widget::container::bordered_box)
-    }
+    
 
     
     fn test_connection_section(&self) -> iced::widget::Column<'_, Message> {

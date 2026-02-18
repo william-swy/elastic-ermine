@@ -76,3 +76,29 @@ where
         .into()
     }
 }
+
+pub fn section_with_header<'a, Message: 'a>(
+    header: impl Into<iced::Element<'a, Message>>, 
+    body: impl Into<iced::Element<'a, Message>>
+) -> iced::widget::Container<'a, Message> {
+    iced::widget::container(
+        iced::widget::column![
+            iced::widget::container(
+                header
+            ).padding(10),
+            iced::widget::rule::horizontal(1),
+            iced::widget::container(
+                body
+            ).padding(10)
+        ]
+    )
+    .style(iced::widget::container::bordered_box)
+}
+
+pub fn section<'a, Message: 'a>(
+    body: impl Into<iced::Element<'a, Message>>
+) -> iced::widget::Container<'a, Message> {
+    iced::widget::container(body)
+        .padding(10)
+        .style(iced::widget::container::bordered_box)
+}

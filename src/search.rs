@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use elastic_ermine::es;
+use crate::{es, widget};
 use iced::widget::{column, row};
 
 #[derive(Debug, Clone)]
@@ -200,33 +200,43 @@ impl View {
 
     #[must_use]
     pub fn view(&self) -> iced::Element<'_, Message> {
-        column![
-            self.choose_search_type_section(),
-            row![
-                self.search_filters()
-                    .align_x(iced::alignment::Horizontal::Left)
-                    .width(iced::FillPortion(1))
-                    .height(iced::Shrink),
-                match self.search_type {
-                    SearchType::StringSearch => column![
-                        self.query_string_search_view(),
-                        self.generic_search_result_view()
-                            .width(iced::Fill)
-                    ],
-                    SearchType::GenericSearch => column![
-                        self.generic_search_view()
-                            .height(iced::Length::FillPortion(2)),
-                        self.generic_search_result_view()
-                            .width(iced::Fill)
-                            .height(iced::Length::FillPortion(1))
-                    ]
-                }
-                .align_x(iced::alignment::Horizontal::Center)
-                .width(iced::FillPortion(4))
-                .height(iced::Fill),
-            ]
-            .spacing(10),
-        ].spacing(10)
+        row![
+            self.search_filters()
+                .align_x(iced::alignment::Horizontal::Left)
+                .width(iced::FillPortion(1))
+                .height(iced::Shrink),
+            match self.search_type {
+                SearchType::StringSearch => iced::widget::column![
+                    widget::section(
+                        iced::widget::column![
+                            self.choose_search_type_section(),
+                            self.query_string_search_view(),
+                        ]
+                        .spacing(10)
+                    ),
+                    self.generic_search_result_view()
+                        .width(iced::Fill)
+                        .height(iced::Fill)
+                ],
+                SearchType::GenericSearch => iced::widget::column![
+                    widget::section(
+                        iced::widget::column![
+                            self.choose_search_type_section(),
+                            self.generic_search_view(),
+                        ]
+                        .spacing(10)
+                    ).height(iced::FillPortion(1)),
+                    self.generic_search_result_view()
+                        .width(iced::Fill)
+                        .height(iced::FillPortion(1))
+                ],
+            }
+            .spacing(10)
+            .align_x(iced::alignment::Horizontal::Center)
+            .width(iced::FillPortion(4))
+            .height(iced::Fill),
+        ]
+        .spacing(10)
         .into()
     }
 
@@ -303,51 +313,47 @@ impl View {
 
     fn generic_search_view(&self) -> iced::widget::Container<'_, Message> {
         iced::widget::container(
-            column![
-                iced::widget::text_editor(&self.generic_search_body_content) // perhaps make this scrollable
-                    .on_action(Message::GenericSearchBodyEditorActionPerformed)
-                    .height(iced::Length::Fill)
-                    // .height(iced::Length::FillPortion(3))
-            ]
-            .width(iced::Fill)
-            .height(iced::Fill)
+            iced::widget::text_editor(&self.generic_search_body_content)
+                .on_action(Message::GenericSearchBodyEditorActionPerformed)
+                .height(iced::Fill)
         )
     }
 
     fn generic_search_result_view(&self) -> iced::widget::Container<'_, Message> {
-        iced::widget::container(
-            match &self.generic_search_display_content {
-                GenericSearchDisplaySectionValue::Default => column![
-                    iced::widget::text(
-                        "Enter a query above to search your Elasticsearch cluster. Use the filters on the left to refine your results."
-                    )
-                    .align_x(iced::Center)
-                    .align_y(iced::Center),
-                ],
-                GenericSearchDisplaySectionValue::Error(err) => column![
-                    iced_selection::text(
-                        format!("ERROR\nSearch failed: {}", err)
-                    )
-                    .align_x(iced::Center)
-                    .align_y(iced::Center),
-                ],
-                GenericSearchDisplaySectionValue::Result(res) => column![
+        match &self.generic_search_display_content {
+            GenericSearchDisplaySectionValue::Default => widget::section(
+                iced::widget::text(
+                    "Enter a query above to search your Elasticsearch cluster. Use the filters on the left to refine your results."
+                )
+                .align_x(iced::Center)
+                .align_y(iced::Center)
+            ),
+            GenericSearchDisplaySectionValue::Error(err) => widget::section_with_header(
+                iced::widget::text("ERROR"),
+                iced_selection::text(
+                    format!("Search failed: {}", err)
+                )
+                .align_x(iced::Center)
+                .align_y(iced::Center)
+            ),
+            GenericSearchDisplaySectionValue::Result(res) => widget::section_with_header(
+                iced::widget::row![
                     iced::widget::text(format!("Results")),
-                    iced::widget::text(format!("Number of hits: {}", res.hits.hits.len())),
-                    iced::widget::scrollable(
-                        column(
-                        res.hits.hits.iter().map(|item|
-                            iced_selection::text(
-                                serde_json::to_string_pretty(item).unwrap_or(format!("Failed to display {:?}", item))
-                            ).into()
-                        ))
-                    )
-                    .width(iced::Fill)
-                    .height(iced::Fill)
+                    iced::widget::space::horizontal(),
+                    self.result_stats(res)
                 ],
-            }
-            
-        )
+                iced::widget::scrollable(
+                    column(
+                    res.hits.hits.iter().map(|item|
+                        iced_selection::text(
+                            serde_json::to_string_pretty(item).unwrap_or(format!("Failed to display {:?}", item))
+                        ).into()
+                    ))
+                )
+                .width(iced::Fill)
+                .height(iced::Fill)
+            ),
+        }
     }
 
     // TODO: rename as search button. Should also submit query based on the search mode
@@ -360,6 +366,30 @@ impl View {
             .on_press_maybe(produced_message)
             .width(iced::Shrink)
             .height(iced::Shrink)
+    }
+
+    // TODO: refactor widget::section function to capture this case too
+    fn result_stats(&self, res: &es::OperationSearchResult) -> iced::widget::Container<'_, Message> {
+        if res.timed_out {
+            iced::widget::container(
+                iced::widget::text(format!("Timed out | {} results | {} ms", res.hits.hits.len(), res.time_took_ms))
+            )
+            .style(|t| {
+                let danger = iced::widget::container::danger(t);
+                let border = danger.border.rounded(5.0);
+                danger.border(border)
+            })
+        } else {
+            iced::widget::container(
+                iced::widget::text(format!("{} results | {} ms", res.hits.hits.len(), res.time_took_ms))
+            )
+            .style(|t| {
+                let success = iced::widget::container::success(t);
+                let border = success.border.rounded(5.0);
+                success.border(border)
+            })
+        }
+        .padding(5)
     }
 
     pub fn try_invoke_with_client(
