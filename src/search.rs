@@ -267,15 +267,21 @@ impl View {
     }
 
     fn search_filters(&self) -> iced::widget::Container<'_, Message> {
+        let refresh_icon = assets::refresh_icon()
+            .height(10)
+            .width(10);
         let filters = column![
             row![
-                iced::widget::text("Filters"),
+                iced::widget::text("Filters")
+                    .align_y(iced::Center),
                 iced::widget::space::horizontal(),
                 match self.refresh_filter_button_state {
-                    RefreshFilterButtonState::Ready => iced::widget::button("Refresh")
+                    RefreshFilterButtonState::Ready => iced::widget::button(refresh_icon)
                         .on_press(Message::FilterRefreshPressed),
-                    RefreshFilterButtonState::Waiting => iced::widget::button("Refreshing..."),
-                },
+                    RefreshFilterButtonState::Waiting => iced::widget::button(refresh_icon),
+                }
+                .width(iced::Shrink)
+                .height(iced::Shrink),
             ],
             self.refresh_filter_errors.as_ref()
                 .map(|err| iced::widget::text(err)),
