@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{es, widget};
+use crate::{assets, es, widget};
 use iced::widget::{column, row};
 
 #[derive(Debug, Clone)]
@@ -17,7 +17,8 @@ pub enum Message {
     SearchPressed,
     SearchResultsReturned(Result<es::OperationSearchResult, String>),
     GenericSearchBodyEditorActionPerformed(iced::widget::text_editor::Action),
-    QueryStringUpdated(String)
+    QueryStringUpdated(String),
+    ResultsAccordianClicked(usize)
 }
 
 pub enum Action {
@@ -63,8 +64,8 @@ enum RefreshFilterButtonState {
 
 #[derive(Debug, Default, Clone)]
 pub enum SearchType {
-    StringSearch,
     #[default]
+    StringSearch,
     GenericSearch
 }
 
@@ -88,7 +89,10 @@ enum GenericSearchDisplaySectionValue {
     #[default]
     Default,
     Error(String),
-    Result(es::OperationSearchResult)
+    Result{
+        res: es::OperationSearchResult,
+        expanded_hits: Vec<bool>
+    }
 }
 
 impl View {
@@ -179,7 +183,8 @@ impl View {
                 self.generic_search_search_button_state = GenericSearchSearchButtonState::Ready;
                 match operation_search_result {
                     Ok(res) => {
-                        self.generic_search_display_content = GenericSearchDisplaySectionValue::Result(res);
+                        let num_hits = res.hits.hits.len();
+                        self.generic_search_display_content = GenericSearchDisplaySectionValue::Result{res, expanded_hits: vec![false; num_hits]};
                     },
                     Err(err) => {
                         self.generic_search_display_content = GenericSearchDisplaySectionValue::Error(format!("Failed to search: {}", err));
@@ -193,6 +198,16 @@ impl View {
             },
             Message::QueryStringUpdated(query_string) => {
                 self.query_string = query_string;
+                Action::None
+            },
+            Message::ResultsAccordianClicked(idx) => {
+                if let GenericSearchDisplaySectionValue::Result { res: _res, expanded_hits} = &mut self.generic_search_display_content {
+                    if expanded_hits.len() > idx {
+                        let is_expanded = expanded_hits[idx];
+                        expanded_hits[idx] = !is_expanded;
+                    }
+                }
+
                 Action::None
             },
         }
@@ -244,7 +259,7 @@ impl View {
         row![
             iced::widget::button("Query String")
                 .on_press(Message::SearchTypeChanged(SearchType::StringSearch)),
-            iced::widget::button("Generic")
+            iced::widget::button("Search Payload")
                 .on_press(Message::SearchTypeChanged(SearchType::GenericSearch)),
             iced::widget::space::horizontal(),
             self.generic_search_search_button()
@@ -336,18 +351,18 @@ impl View {
                 .align_x(iced::Center)
                 .align_y(iced::Center)
             ),
-            GenericSearchDisplaySectionValue::Result(res) => widget::section_with_header(
+            GenericSearchDisplaySectionValue::Result{res, expanded_hits} => widget::section_with_header(
                 iced::widget::row![
-                    iced::widget::text(format!("Results")),
+                    iced::widget::text(format!("Results")).align_y(iced::Center),
                     iced::widget::space::horizontal(),
                     self.result_stats(res)
                 ],
                 iced::widget::scrollable(
                     column(
-                    res.hits.hits.iter().map(|item|
-                        iced_selection::text(
-                            serde_json::to_string_pretty(item).unwrap_or(format!("Failed to display {:?}", item))
-                        ).into()
+                    res.hits.hits.iter().zip(expanded_hits.iter()).enumerate().map(|(index, (item, expanded))|
+                        self.hit_item(item, *expanded, index)
+                            .width(iced::Fill)
+                            .into()
                     ))
                 )
                 .width(iced::Fill)
@@ -390,6 +405,45 @@ impl View {
             })
         }
         .padding(5)
+    }
+
+    // TODO: consider allow the display of multiple fields based on selection
+    fn hit_item<'a>(&'a self, item: &'a serde_json::Value, expanded: bool, index: usize) -> iced::widget::Container<'a, Message> {
+        let expand_button = iced::widget::button(
+            if expanded {
+                assets::chevron_down()
+            } else {
+                assets::chevron_right()
+            }
+            .height(15)
+            .width(15)
+        )
+        .width(iced::Shrink)
+        .height(iced::Shrink)
+        .on_press(Message::ResultsAccordianClicked(index));
+        
+        // TODO: make this formatted with key hightlighted, kibana for reference
+        let header = iced::widget::row![
+            expand_button,
+            iced_selection::text(
+                item.get("_id")
+                    .map(|val| val.as_str())
+                    .flatten()
+                    .unwrap_or("_id field missing")
+            )
+            .align_y(iced::Center)
+        ].spacing(10);
+
+        if expanded {
+            widget::section_with_header(
+                header, 
+                iced_selection::text(
+                    serde_json::to_string_pretty(item)
+                        .unwrap_or(format!("Failed to display {:?}", item)))
+                )
+        } else {
+            widget::section(header)
+        }
     }
 
     pub fn try_invoke_with_client(

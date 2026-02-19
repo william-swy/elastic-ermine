@@ -16,7 +16,13 @@ static REFRESH_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(inc
 
 static LOADING_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(include_bytes!("../assets/loader.svg")));
 
+static CHEVRON_DOWN: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(include_bytes!("../assets/chevron-down.svg")));
+
+static CHEVRON_RIGHT: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(include_bytes!("../assets/chevron-right.svg")));
+
 static APP_ICON: LazyLock<iced::widget::image::Handle> = LazyLock::new(|| iced::widget::image::Handle::from_bytes(APP_ICON_BUFFER));
+
+
 
 pub fn settings_icon() -> Svg<'static> {
     Svg::new(SETTINGS_ICON.clone())
@@ -40,6 +46,14 @@ pub fn refresh_icon() -> Svg<'static> {
 
 pub fn loading_icon() -> Svg<'static> {
     Svg::new(LOADING_ICON.clone())
+}
+
+pub fn chevron_down() -> Svg<'static> {
+    Svg::new(CHEVRON_DOWN.clone())
+}
+
+pub fn chevron_right() -> Svg<'static> {
+    Svg::new(CHEVRON_RIGHT.clone())
 }
 
 pub fn app_icon() -> iced::widget::Image {

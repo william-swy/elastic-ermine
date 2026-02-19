@@ -152,7 +152,6 @@ impl View {
             ]
             .spacing(20)
         )
-        .padding([20, 40])
         .align_x(iced::alignment::Horizontal::Center)
         .align_y(iced::Top)
         .into()
