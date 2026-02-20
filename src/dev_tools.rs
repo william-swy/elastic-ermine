@@ -1,5 +1,4 @@
-use crate::{assets, es};
-use iced::widget::{column, row};
+use crate::{assets, es, widget};
 
 pub enum Action {
     None,
@@ -46,19 +45,18 @@ const SUPPORTED_METHODS: [es::ElasticSearchMethodType; 5] =[
 
 impl View {
     pub fn view(&self) -> iced::Element<'_, Message> {
-        row![
-            iced::widget::container(
-                self.editor()
-            )
+        iced::widget::row![
+            self.editor()
             .width(iced::FillPortion(1))
             .height(iced::Fill),
-            iced::widget::rule::vertical(2),
             iced::widget::container(
                 self.response()
             )
             .width(iced::FillPortion(1))
             .height(iced::Fill),
-        ].into()
+        ]
+        .padding(5)
+        .into()
     }
 
     pub fn update(&mut self, message: Message) -> Action {
@@ -91,9 +89,10 @@ impl View {
         }
     }
 
-    pub fn editor(&self) -> iced::widget::Column<'_, Message> {
-        column![
-            row![
+    pub fn editor(&self) -> iced::widget::Container<'_, Message> {
+        widget::section(
+        iced::widget::column![
+            iced::widget::row![
                 iced::widget::pick_list(
                     SUPPORTED_METHODS,
                     Some(&self.request_type),
@@ -116,23 +115,44 @@ impl View {
                 }
                 .width(iced::Shrink),
             ],
-            row![
+            iced::widget::row![
                 iced::widget::text("REQUEST BODY (JSON)"),
                 iced::widget::space::horizontal(),
-                iced::widget::button("Format"),
-                iced::widget::button("Clear")
+                iced::widget::button(
+                    iced::widget::row![
+                        assets::x_icon()
+                            .width(15)
+                            .height(15), 
+                        iced::widget::text("Clear")
+                            .size(15)
+                        ]
+                        .align_y(iced::Center)
+                        .spacing(5)
+                    )
+                    .height(iced::Shrink),
+                iced::widget::button(
+                    iced::widget::row![
+                        assets::chevron_lr_icon()
+                            .width(15)
+                            .height(15), 
+                        iced::widget::text("Format")
+                            .size(15)
+                        ]
+                        .align_y(iced::Center)
+                        .spacing(5)
+                    ).height(iced::Shrink),
             ]
-            .spacing(5),
+            .align_y(iced::Center),
             iced::widget::text_editor(&self.request_body)
                 .on_action(Message::RequestBodyEditPerformed)
                 .height(iced::Length::Fill)
                 .placeholder(r#"{"size":10000,"query":{"match_all":{}}}"#),
-        ]
+        ])
     }
 
-    pub fn response(&self) -> iced::Element<'_, Message> {
-        column![
-            iced::widget::text("Results"),
+    pub fn response(&self) -> iced::widget::Container<'_, Message> {
+        widget::section_with_header(
+            iced::widget::text("Results"), 
             iced::widget::scrollable(
                 self.result.as_ref().map(|res| {
                     match res {
@@ -148,7 +168,8 @@ impl View {
                 })
             )
             .width(iced::Fill)
-        ].into()
+            .height(iced::Fill)
+        )
     }
 
     pub fn try_invoke_es_operation_with_client(

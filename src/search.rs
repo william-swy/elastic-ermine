@@ -268,8 +268,8 @@ impl View {
 
     fn search_filters(&self) -> iced::widget::Container<'_, Message> {
         let refresh_icon = assets::refresh_icon()
-            .height(10)
-            .width(10);
+            .height(15)
+            .width(15);
         let filters = column![
             row![
                 iced::widget::text("Filters")
@@ -280,9 +280,25 @@ impl View {
                         .on_press(Message::FilterRefreshPressed),
                     RefreshFilterButtonState::Waiting => iced::widget::button(refresh_icon),
                 }
+                .padding(0)
                 .width(iced::Shrink)
-                .height(iced::Shrink),
-            ],
+                .height(iced::Shrink)
+                .style(|theme, status| {
+                    let palette = theme.extended_palette();
+                    let style = iced::widget::button::Style::default();
+
+                    if status == iced::widget::button::Status::Hovered {
+                        style.with_background(
+                            iced::Background::Color(palette.primary.strong.color)
+                        )
+                    } else {
+                        style.with_background(
+                            iced::Background::Color(iced::Color::TRANSPARENT)
+                        )
+                    }
+                }
+                ),
+            ].align_y(iced::Center),
             self.refresh_filter_errors.as_ref()
                 .map(|err| iced::widget::text(err)),
             iced::widget::text("Indicies"),
@@ -415,17 +431,18 @@ impl View {
 
     // TODO: consider allow the display of multiple fields based on selection
     fn hit_item<'a>(&'a self, item: &'a serde_json::Value, expanded: bool, index: usize) -> iced::widget::Container<'a, Message> {
+        // TODO make icon fill up more of the button
         let expand_button = iced::widget::button(
             if expanded {
-                assets::chevron_down()
+                assets::chevron_down_icon()
             } else {
-                assets::chevron_right()
+                assets::chevron_right_icon()
             }
-            .height(15)
-            .width(15)
+            .width(iced::Fill)
+            .height(iced::Fill)
         )
-        .width(iced::Shrink)
-        .height(iced::Shrink)
+        .width(30)
+        .height(30)
         .on_press(Message::ResultsAccordianClicked(index));
         
         // TODO: make this formatted with key hightlighted, kibana for reference

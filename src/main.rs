@@ -109,14 +109,12 @@ impl MyApp {
                     .align_y(iced::alignment::Vertical::Top)
                     .width(iced::Shrink)
                     .height(iced::Fill),
-                iced::widget::rule::vertical(2),    
                 self.main_window()
                     .align_x(iced::alignment::Horizontal::Center)
                     .width(iced::Fill)
                     .height(iced::Fill),
             ]
             .width(iced::Fill)
-            .spacing(5)
         ]
         .width(iced::Fill)
         .height(iced::Fill)
