@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Disable incremental compilation for faster from-scratch builds
+  CARGO_INCREMENTAL: 0
 
 jobs:
   build:
