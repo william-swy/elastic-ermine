@@ -24,6 +24,10 @@ static CHEVRON_LR_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(
 
 static X_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(include_bytes!("../assets/x.svg")));
 
+static ARROW_LEFT_LINE_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(include_bytes!("../assets/arrow-left-to-line.svg")));
+
+static ARROW_RIGHT_LINE_ICON: LazyLock<Handle> = LazyLock::new(|| Handle::from_memory(include_bytes!("../assets/arrow-right-from-line.svg")));
+
 static APP_ICON: LazyLock<iced::widget::image::Handle> = LazyLock::new(|| iced::widget::image::Handle::from_bytes(APP_ICON_BUFFER));
 
 
@@ -66,6 +70,14 @@ pub fn chevron_lr_icon() -> Svg<'static> {
 
 pub fn x_icon() -> Svg<'static> {
     Svg::new(X_ICON.clone())
+}
+
+pub fn arrow_left_line_icon() -> Svg<'static> {
+    Svg::new(ARROW_LEFT_LINE_ICON.clone())
+}
+
+pub fn arrow_right_line_icon() -> Svg<'static> {
+    Svg::new(ARROW_RIGHT_LINE_ICON.clone())
 }
 
 pub fn app_icon() -> iced::widget::Image {

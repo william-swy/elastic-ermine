@@ -1,12 +1,11 @@
 use elastic_ermine::{es,util};
 
-use iced::widget::{column, row};
-
 mod assets;
 mod widget;
 mod dev_tools;
 mod search;
 mod settings;
+mod sidebar;
 
 
 fn main() -> iced::Result {
@@ -27,28 +26,18 @@ fn main() -> iced::Result {
 
 #[derive(Debug, Clone)]
 enum Message {
-    PageChanged(Page),
     DevToolsView(dev_tools::Message),
     SettingsView(settings::Message),
     SearchView(search::Message),
+    Sidebar(sidebar::Message),
 }
 
 #[derive(Debug, Default)]
 struct MyApp{
-    // general state
-    current_page: Page,
     dev_tools_view: dev_tools::View,
     settings_view: settings::View,
     search_view: search::View,
-}
-
-#[derive(Debug, Default, Clone)]
-enum Page {
-    #[default]
-    Search,
-    DevConsole,
-    Connection,
-    Logs
+    sidebar_view: sidebar::View,
 }
 
 impl MyApp {
@@ -87,102 +76,33 @@ impl MyApp {
                     settings::Action::None => iced::Task::none(),
                 }
             },
-            Message::PageChanged(page) => {
-                self.current_page = page;
-
-                iced::Task::none()
-            }
+            Message::Sidebar(message) => {
+                match self.sidebar_view.update(message) {
+                    sidebar::Action::None => iced::Task::none(),
+                }
+            },
         }
     }
 
     fn view(&self) -> iced::Element<'_, Message> {
-        column![
-            self.header()
-                .align_x(iced::alignment::Horizontal::Left)
-                .align_y(iced::alignment::Vertical::Top)
+        iced::widget::row![
+            self.sidebar_view.view().map(Message::Sidebar),
+            self.main_window()
+                .align_x(iced::alignment::Horizontal::Center)
                 .width(iced::Fill)
-                .height(iced::Shrink),
-            iced::widget::rule::horizontal(2),
-            row![
-                self.window_selector()
-                    .align_x(iced::alignment::Horizontal::Left)
-                    .align_y(iced::alignment::Vertical::Top)
-                    .width(iced::Shrink)
-                    .height(iced::Fill),
-                self.main_window()
-                    .align_x(iced::alignment::Horizontal::Center)
-                    .width(iced::Fill)
-                    .height(iced::Fill),
-            ]
-            .width(iced::Fill)
+                .height(iced::Fill),
         ]
         .width(iced::Fill)
-        .height(iced::Fill)
         .into()
-
-    }
-
-    fn header(&self) -> iced::widget::Container<'_, Message> {
-        iced::widget::container(
-            row![
-                assets::app_icon()
-                .height(50)
-                .width(50),
-                column![
-                    iced::widget::text("Elastic Ermine")
-                        .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::default()})
-                        .size(30),
-                    iced::widget::text("Search your data with Elasticsearch ... or Opensearch")
-                        .font(iced::Font { weight: iced::font::Weight::Light, ..iced::Font::default()})
-                        .size(14),
-                ].spacing(5)
-            ].spacing(10)
-        )
-    }
-
-    fn window_selector(&self) -> iced::widget::Container<'_, Message> {
-        iced::widget::container(
-            column![
-                iced::widget::tooltip(
-                    iced::widget::button(assets::search_icon().width(iced::Shrink))
-                        .on_press(Message::PageChanged(Page::Search))
-                        .padding(iced::Padding::from([10, 10])),
-                    "Search",
-                    iced::widget::tooltip::Position::Right
-                ).padding(10),
-                iced::widget::tooltip(
-                    iced::widget::button(assets::terminal_icon().width(iced::Shrink))
-                        .on_press(Message::PageChanged(Page::DevConsole))
-                        .padding(iced::Padding::from([10, 10])),
-                    "Dev Console",
-                    iced::widget::tooltip::Position::Right
-                ),
-                iced::widget::tooltip(
-                    iced::widget::button(assets::settings_icon().width(iced::Shrink))
-                        .on_press(Message::PageChanged(Page::Connection))
-                        .padding(iced::Padding::from([10, 10])),
-                    "Settings",
-                    iced::widget::tooltip::Position::Right
-                ),
-                iced::widget::tooltip(
-                    iced::widget::button(assets::file_icon().width(iced::Shrink))
-                        .on_press(Message::PageChanged(Page::Logs))
-                        .padding(iced::Padding::from([10, 10])),
-                    "Logs",
-                    iced::widget::tooltip::Position::Right
-                )
-                
-            ]
-        )
     }
 
     fn main_window(&self) -> iced::widget::Container<'_, Message> {
         iced::widget::container(
-            match self.current_page {
-                Page::Search => self.search_view.view().map(Message::SearchView),
-                Page::Connection => self.settings_view.view().map(Message::SettingsView),
-                Page::Logs => self.logs_section(),
-                Page::DevConsole => self.dev_tools_view.view().map(Message::DevToolsView),
+            match self.sidebar_view.current_page() {
+                sidebar::Page::Search => self.search_view.view().map(Message::SearchView),
+                sidebar::Page::Connection => self.settings_view.view().map(Message::SettingsView),
+                sidebar::Page::Logs => self.logs_section(),
+                sidebar::Page::DevConsole => self.dev_tools_view.view().map(Message::DevToolsView),
             }
         )
         .padding(10)
