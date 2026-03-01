@@ -92,10 +92,7 @@ impl View {
                 iced::widget::button(
                     icon.width(iced::Shrink)
                 )
-                .on_press(message)
-                // .width(iced::Fill)
-                // .padding(iced::Padding::from([10, 10]))
-                , 
+                .on_press(message), 
                 iced::widget::container(
                     iced::widget::text(expanded_text))
                     .padding(5)
