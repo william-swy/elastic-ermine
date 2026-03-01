@@ -51,12 +51,15 @@ impl View {
             sidebar
             .width(
                 if self.toolbar_expanded {
-                    120.into() // Must hard set width otherwise text will not appear
+                    130.into() // Must hard set width otherwise text will not appear. Think about potential dynamic computation based on grapheme size
                 } else {
                     iced::Shrink
                 }
             )
+            .padding(5)
+            .spacing(5)
         )
+        .style(Self::container_style)
         .width(iced::Shrink)
         .height(iced::Fill)
         .into()
@@ -86,13 +89,15 @@ impl View {
                 )
                 .width(iced::Fill)
                 .on_press(message)
+                .style(Self::button_style)
                 .into()
             } else {
                 iced::widget::tooltip(
                 iced::widget::button(
                     icon.width(iced::Shrink)
-                )
-                .on_press(message), 
+                    )
+                    .style(Self::button_style)
+                    .on_press(message), 
                 iced::widget::container(
                     iced::widget::text(expanded_text))
                     .padding(5)
@@ -121,6 +126,24 @@ impl View {
         }
         .width(iced::Fill)
         .on_press(Message::ExpandedClicked)
+        .style(Self::button_style)
         .into()
+    }
+
+    fn button_style(theme: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
+        iced::widget::button::Style {
+            border: iced::border::rounded(5),
+            ..iced::widget::button::subtle(theme, status)
+        }
+    }
+
+    fn container_style(theme: &iced::Theme) -> iced::widget::container::Style {
+        let palette = theme.extended_palette();
+
+        iced::widget::container::Style {
+            background: Some(palette.background.weakest.color.into()),
+            text_color: Some(palette.background.weakest.text),
+            ..iced::widget::container::Style::default()
+        }
     }
 }
