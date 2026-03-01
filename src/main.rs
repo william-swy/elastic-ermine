@@ -92,6 +92,7 @@ impl MyApp {
                 .width(iced::Fill)
                 .height(iced::Fill),
         ]
+        .spacing(10)
         .width(iced::Fill)
         .into()
     }
@@ -105,7 +106,6 @@ impl MyApp {
                 sidebar::Page::DevConsole => self.dev_tools_view.view().map(Message::DevToolsView),
             }
         )
-        .padding(10)
     }
 
     fn logs_section(&self) -> iced::Element<'_, Message> {
